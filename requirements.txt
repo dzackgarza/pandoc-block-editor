@@ -1,0 +1,22 @@
+# --- Core app dependencies ---
+streamlit
+markdown
+mdx-mathjax
+pypandoc
+jinja2
+pyyaml
+watchdog
+
+# --- Development / Linting / Formatting ---
+black
+ruff
+mypy
+pre-commit
+ipython
+rich
+
+# --- Testing ---
+pytest
+pytest-cov
+pytest-mock
+
