@@ -1,0 +1,33 @@
+{
+  "name": "pandoc-block-editor",
+  "version": "0.1.0",
+  "description": "A Pandoc-based block editor",
+  "main": "dist/src/index.js",
+  "scripts": {
+    "test": "vitest",
+    "test:e2e": "playwright test",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier --write ."
+  },
+  "keywords": [
+    "pandoc",
+    "markdown",
+    "editor",
+    "latex"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.53.1",
+    "@types/node": "^24.0.4",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "@vitest/ui": "^3.2.4",
+    "eslint": "^8.57.1",
+    "playwright": "^1.53.1",
+    "prettier": "^3.6.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
