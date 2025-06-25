@@ -4,10 +4,10 @@
   "description": "A Pandoc-based block editor",
   "main": "dist/src/index.js",
   "scripts": {
-    "test": "vitest",
-    "test:e2e": "playwright test",
-    "lint": "eslint . --ext .ts",
-    "format": "prettier --write ."
+    "test": "vitest --config ./config/vitest.config.ts",
+    "test:e2e": "playwright test --config ./config/playwright.config.ts",
+    "lint": "eslint . --ext .ts --config ./config/.eslintrc.js",
+    "format": "prettier --write --config ./config/.prettierrc.json"
   },
   "keywords": [
     "pandoc",
