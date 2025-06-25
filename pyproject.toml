@@ -1,0 +1,31 @@
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310', 'py311', 'py312'] # Adjust as per target Python versions
+
+[tool.pylint.'MESSAGES CONTROL']
+disable = [
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "invalid-name", # Allow short variable names like 'df' for dataframes if common
+    "fixme",
+]
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.pytest.ini_options]
+python_files = "test_*.py"
+python_functions = "test_*"
+addopts = "-ra -q --color=yes"
+testpaths = [
+    "tests",
+]
+# If using pytest-playwright, you might add browser options here or manage via CLI
+# Example:
+# browser = "chromium"
+# headless = true
+
+[tool.isort]
+profile = "black"
+line_length = 88
