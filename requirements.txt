@@ -8,5 +8,10 @@ pylint==3.3.7
 pypandoc==1.15
 pytest # Added
 pytest-playwright # Added
-streamlit # Added
+streamlit # Added (keeping for comparison)
 tomlkit==0.13.3
+# PyQt6 dependencies for new Qt-based editor
+PyQt6==6.8.0
+PyQt6-WebEngine==6.8.0
+markdown==3.7
+Pygments==2.18.0  # For syntax highlighting

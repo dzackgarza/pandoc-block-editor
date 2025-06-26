@@ -6,6 +6,14 @@ from functools import lru_cache
 
 import pypandoc
 
+# Try to import fast markdown library, fallback if not available
+try:
+    import markdown
+    FAST_MARKDOWN_AVAILABLE = True
+except ImportError:
+    FAST_MARKDOWN_AVAILABLE = False
+    print("Warning: 'markdown' library not available. Install with: pip install markdown")
+
 # Try to get pandoc path if it's bundled or in a known location
 # This is a common pattern if you're distributing pandoc with your app
 PANDOC_PATH = os.getenv("PANDOC_PATH")
@@ -254,6 +262,35 @@ def convert_markdown_to_html_direct(markdown_string, use_cache=True):
     except Exception as e:
         print(f"Direct pandoc error: {e}")
         return f"<p>Direct pandoc error: {e}</p>"
+
+
+def convert_markdown_to_html_ultrafast(markdown_string):
+    """
+    Ultra-fast markdown to HTML conversion for block previews.
+    Uses lightweight Python markdown library instead of Pandoc.
+    Perfect for editing previews where speed > perfect compatibility.
+    """
+    if not markdown_string:
+        return ""
+    
+    if not FAST_MARKDOWN_AVAILABLE:
+        # Fallback to fast pandoc if markdown library not available
+        return convert_markdown_to_html_direct(markdown_string)
+    
+    try:
+        # Configure markdown with common extensions for better compatibility
+        md = markdown.Markdown(extensions=[
+            'codehilite',  # Syntax highlighting
+            'fenced_code',  # ```code``` blocks
+            'tables',  # Table support
+            'toc',  # Table of contents
+        ])
+        html_output = md.convert(markdown_string)
+        return html_output
+    except Exception as e:
+        print(f"Fast markdown error: {e}")
+        # Fallback to pandoc on error
+        return convert_markdown_to_html_direct(markdown_string)
 
 
 def clear_html_cache():

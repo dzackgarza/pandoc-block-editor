@@ -2,6 +2,7 @@
 # (streamlit is a core dep for the app, pylint might not find it in all CI envs)
 import json
 import os
+import time
 from io import StringIO
 import uuid
 
@@ -49,16 +50,79 @@ def _extract_ast_block_attributes(ast_block):
     return None
 
 
+def _split_markdown_on_headings(markdown_string):
+    """
+    Fast markdown splitting: headings and content as separate blocks.
+    - Each heading becomes its own block
+    - Content between headings becomes separate blocks
+    - Perfect for block-based editing where each logical unit is editable
+    """
+    if not markdown_string:
+        return [create_editor_block(content="")]
+    
+    lines = markdown_string.split('\n')
+    blocks = []
+    current_content_lines = []
+    
+    for line in lines:
+        # Check if line is a heading (starts with #)
+        if line.strip().startswith('#'):
+            # Save any accumulated content as a block
+            if current_content_lines:
+                content = '\n'.join(current_content_lines).strip()
+                if content:
+                    blocks.append(create_editor_block(content=content, kind="paragraph"))
+                current_content_lines = []
+            
+            # Add heading as its own block
+            heading_content = line.strip()
+            if heading_content:
+                # Determine heading level for kind
+                level = len(heading_content) - len(heading_content.lstrip('#'))
+                blocks.append(create_editor_block(
+                    content=heading_content, 
+                    kind="heading", 
+                    level=level
+                ))
+        else:
+            # Accumulate content lines
+            current_content_lines.append(line)
+    
+    # Add final content block if any
+    if current_content_lines:
+        content = '\n'.join(current_content_lines).strip()
+        if content:
+            blocks.append(create_editor_block(content=content, kind="paragraph"))
+    
+    return blocks if blocks else [create_editor_block(content="")]
+
+
 def parse_full_markdown_to_editor_blocks(full_markdown_string):
     """
-    Parses a full Markdown string into a list of EditorBlock dictionaries.
-    R0914: Too many local variables (17/15) - This is borderline, structure is complex.
-    R0912: Too many branches (17/12) - Due to AST node types.
-    Accepting these for now as breaking it down further might reduce clarity
-    of AST processing.
+    OPTIMIZED: Parses a full Markdown string into editor blocks.
+    Only uses expensive AST parsing for document structure (fenced divs).
+    Individual blocks store raw markdown for fast editing.
     """
     if not full_markdown_string:
         return [create_editor_block(content="")]
+    
+    # PERFORMANCE OPTIMIZATION: Check if content needs AST processing
+    # Only use expensive AST parsing if document has structural elements
+    lines = full_markdown_string.split('\n')
+    heading_lines = [line for line in lines if line.strip().startswith('#')]
+    
+    needs_ast_parsing = (
+        ":::" in full_markdown_string or  # Fenced divs
+        len(heading_lines) > 5  # Many headings - worth structuring
+    )
+    
+    if not needs_ast_parsing:
+        # FAST PATH: Split on headings without expensive AST operations
+        print(f"DEBUG: Using fast path - simple heading-based splitting")
+        return _split_markdown_on_headings(full_markdown_string)
+    
+    # STRUCTURAL PATH: Use AST only for document structure
+    print(f"DEBUG: Using AST parsing for structural content")
     try:
         ast = pandoc_utils.parse_markdown_to_ast_json(full_markdown_string)
     except RuntimeError as e:
@@ -192,53 +256,67 @@ def reconstruct_markdown_from_editor_blocks():
 # --- Streamlit Session State Initialization ---
 def initialize_session_state():
     """Initializes Streamlit session state variables."""
+    # Only initialize once - critical for performance
     if "documentEditorBlocks" not in st.session_state:
+        print(f"DEBUG: Initializing session state at {time.time()}")  # PERFORMANCE DEBUG
+        
+        # Initialize with empty blocks - will be populated by parsing step
         st.session_state.documentEditorBlocks = [create_editor_block(content="")]
         st.session_state.initial_load_processed = False
-        st.session_state.default_markdown_content = (
-            "# New Document\n\nStart writing here."
-        )
-        try:
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            project_root = os.path.dirname(script_dir)
-            torture_test_filename = "torture_test_document.md"
-            torture_test_path = os.path.join(
-                project_root, "test_fixtures", torture_test_filename
-            )
-            print(
-                "DEBUG: Torture test path in initialize_session_state: "
-                f"{torture_test_path}"
-            )  # DEBUG PRINT
-            file_exists = os.path.exists(torture_test_path)
-            print(f"DEBUG: Torture test file exists: {file_exists}")  # DEBUG PRINT
+        
+        # Use simple default content for development - avoid file I/O during init
+        default_content = """# Pandoc Block Editor
 
-            if file_exists:
-                with open(torture_test_path, "r", encoding="utf-8") as f:
-                    st.session_state.initial_markdown_content = f.read()
-                    print(
-                        "DEBUG: Successfully read torture_test_document.md"
-                    )  # DEBUG PRINT
-            else:
-                print(
-                    f"DEBUG: Torture test file NOT FOUND at {torture_test_path}"
-                )  # DEBUG PRINT
-                error_message = (
-                    f"# Welcome\n\nCould not find `{torture_test_filename}`. "
-                    "Starting with a default document.\n\n"
-                    f"{st.session_state.default_markdown_content}"
-                )
-                st.session_state.initial_markdown_content = error_message
-                st.session_state.missing_torture_file = True
-        except (IOError, OSError) as e:  # More specific exceptions
-            st.error(f"Error loading initial document: {e}")
-            st.session_state.initial_markdown_content = (
-                f"# Error\n\nError loading initial document. "
-                f"Starting with a default document.\n\n"
-                f"{st.session_state.default_markdown_content}"
-            )
+## Quick Start
+Start editing your **Markdown** content here.
 
+### Features
+- Live preview with Pandoc rendering
+- Block-based editing
+- Math support with MathJax: $E = mc^2$
 
-initialize_session_state()
+```python
+# Code blocks work too
+print("Hello, world!")
+```
+
+> Blockquotes and other Markdown elements render properly.
+
+---
+
+Ready to start editing!
+"""
+        
+        # For development, use fast default content instead of loading large test file
+        # Only load torture test if explicitly requested via environment variable
+        import os
+        load_torture_test = os.environ.get('LOAD_TORTURE_TEST', '').lower() in ('1', 'true', 'yes')
+        
+        if load_torture_test:
+            print("DEBUG: Loading torture test document (LOAD_TORTURE_TEST=true)")
+            try:
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                project_root = os.path.dirname(script_dir)
+                torture_test_path = os.path.join(project_root, "test_fixtures", "torture_test_document.md")
+                
+                if os.path.exists(torture_test_path):
+                    with open(torture_test_path, "r", encoding="utf-8") as f:
+                        st.session_state.initial_markdown_content = f.read()
+                    print("DEBUG: Loaded torture test document")
+                else:
+                    st.session_state.initial_markdown_content = default_content
+                    st.session_state.missing_torture_file = True
+                    print("DEBUG: Torture test file not found, using default")
+            except (IOError, OSError) as e:
+                print(f"DEBUG: Error loading torture test: {e}")
+                st.session_state.initial_markdown_content = default_content
+        else:
+            # PERFORMANCE OPTIMIZATION: Use fast parsing for default content
+            # This will use the heading-based splitting instead of expensive AST operations
+            st.session_state.initial_markdown_content = default_content
+            print("DEBUG: Using fast default content (will use fast heading-based parsing)")
+        
+        print(f"DEBUG: Session state initialized at {time.time()}")  # PERFORMANCE DEBUG
 
 
 def _render_editor_pane():
@@ -250,14 +328,39 @@ def _render_editor_pane():
         )
         st.markdown(block_id_display_html, unsafe_allow_html=True)
         editor_key = f"editor_{block['id']}_{i}"
-        st.text_area(
-            label=f"Block Content {i+1} ({block['kind']})",
-            value=block["content"],
-            key=editor_key,
-            on_change=handle_block_content_change,
-            args=(block["id"], editor_key),
-            height=max(150, int(len(block["content"]) / 1.5)),
-        )
+        # Dynamic height based on actual content - ultra-compact
+        content_lines = max(1, block["content"].count('\n') + 1)
+        
+        # Smart widget selection: text_input for single lines, text_area for multi-line
+        is_single_line = '\n' not in block["content"]
+        
+        if is_single_line:
+            # Use text_input for single-line content (much more compact)
+            st.text_input(
+                label=f"Block Content {i+1} ({block['kind']})",
+                value=block["content"],
+                key=editor_key,
+                on_change=handle_block_content_change,
+                args=(block["id"], editor_key),
+                label_visibility="collapsed"
+            )
+        else:
+            # Use text_area for multi-line content with Streamlit's minimum
+            content_lines = max(1, block["content"].count('\n') + 1)
+            line_height = 20
+            padding = 48  # Streamlit's overhead
+            dynamic_height = max(68, (content_lines * line_height) + padding)
+            dynamic_height = min(300, dynamic_height)
+            
+            st.text_area(
+                label=f"Block Content {i+1} ({block['kind']})",
+                value=block["content"],
+                key=editor_key,
+                on_change=handle_block_content_change,
+                args=(block["id"], editor_key),
+                height=dynamic_height,
+                label_visibility="collapsed"
+            )
         st.markdown("---")
 
 
@@ -271,8 +374,8 @@ def _render_preview_pane():
         st.markdown(viewer_id_display_html, unsafe_allow_html=True)
         preview_div_id = f"preview-block-{block['id']}-{i}"
         try:
-            # Use direct pandoc call for maximum speed
-            html_content = pandoc_utils.convert_markdown_to_html_direct(block["content"])
+            # PERFORMANCE: Use ultra-fast markdown for block previews
+            html_content = pandoc_utils.convert_markdown_to_html_ultrafast(block["content"])
             
             preview_wrapper_html = (
                 f"<div id='{preview_div_id}' "
@@ -423,7 +526,22 @@ def _render_top_menu_bar():
                 }
             });
             
-            // No localStorage handling needed - using query params instead
+            // Add some sample logging for demonstration
+            console.log('Menu bar initialized successfully');
+            
+            // Log when buttons are clicked for debugging
+            document.getElementById('menu-open')?.addEventListener('click', function() {
+                console.log('Open button clicked');
+            });
+            document.getElementById('menu-save')?.addEventListener('click', function() {
+                console.log('Save button clicked');
+            });
+            document.getElementById('menu-add')?.addEventListener('click', function() {
+                console.log('Add block button clicked');
+            });
+            document.getElementById('menu-debug')?.addEventListener('click', function() {
+                console.log('Debug console toggled');
+            });
         </script>
     </body>
     </html>
@@ -472,6 +590,9 @@ def _render_top_menu_bar():
 def main():  # pylint: disable=too-many-statements,too-many-branches
     """Main function to run the Streamlit application."""
     st.set_page_config(layout="wide", page_title="Pandoc Block Editor")
+    
+    # Initialize session state only once inside main()
+    initialize_session_state()
 
     # Inject Tailwind CSS and custom styling
     st.markdown(
@@ -490,43 +611,62 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
                 min-height: 100vh;
             }
             
-            /* Clean block alignment with card styling */
+            /* Clean block alignment - ultra-compact */
             div[data-testid="stHorizontalBlock"] { 
                 align-items: flex-start;
                 background: white;
-                border-radius: 12px;
-                margin: 12px;
-                padding: 20px;
-                box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-                border: 1px solid #e5e7eb;
-            }
-            
-            /* Block ID styling with modern badge design */
-            .block-id-display {
-                font-size: 11px; 
-                color: #6b7280; 
-                margin-bottom: 8px;
-                font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-                background: #f3f4f6;
-                padding: 4px 8px;
                 border-radius: 6px;
-                display: inline-block;
+                margin: 4px;
+                padding: 8px;
+                box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
                 border: 1px solid #e5e7eb;
             }
             
-            /* Editor styling with modern input design */
+            /* Block ID styling - very compact */
+            .block-id-display {
+                font-size: 8px !important; 
+                color: #9ca3af !important; 
+                margin-bottom: 2px !important;
+                margin-top: 0px !important;
+                font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+                background: transparent !important;
+                padding: 1px 3px !important;
+                border-radius: 3px !important;
+                display: inline-block !important;
+                border: none !important;
+                line-height: 1 !important;
+            }
+            
+            /* Text input styling - ultra-compact for single lines */
+            div[data-testid="stTextInput"] > label { display: none !important; }
+            div[data-testid="stTextInput"] input { 
+                padding: 4px 6px !important; 
+                margin: 0 !important;
+                font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+                font-size: 13px !important;
+                line-height: 1.4 !important;
+                border: 1px solid #d1d5db !important;
+                border-radius: 4px !important;
+                background: #ffffff !important;
+                transition: border-color 0.2s !important;
+                box-sizing: border-box !important;
+                height: 28px !important;
+            }
+            
+            /* Text area styling - compact for multi-line */
             div[data-testid="stTextArea"] > label { display: none !important; }
             div[data-testid="stTextArea"] textarea { 
-                padding: 16px !important; 
+                padding: 4px 6px !important; 
+                margin: 0 !important;
                 font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
-                font-size: 14px !important;
-                line-height: 1.6 !important;
-                border: 2px solid #e5e7eb !important;
-                border-radius: 8px !important;
+                font-size: 13px !important;
+                line-height: 1.4 !important;
+                border: 1px solid #d1d5db !important;
+                border-radius: 4px !important;
                 background: #ffffff !important;
                 transition: border-color 0.2s !important;
                 resize: vertical !important;
-                min-height: 120px !important;
+                box-sizing: border-box !important;
             }
             
             div[data-testid="stTextArea"] textarea:focus { 
@@ -610,16 +750,24 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
                 border-radius: 0 6px 6px 0;
             }
             
-            /* Remove default margins */
+            /* Remove default margins - ultra-compact */
             .element-container {
                 margin-bottom: 0 !important;
+                margin-top: 0 !important;
             }
             
-            /* Separator lines */
+            /* Compact separator lines */
             hr {
-                margin: 20px 0 !important;
+                margin: 4px 0 !important;
                 border: none !important;
-                border-top: 1px solid #e5e7eb !important;
+                border-top: 1px solid #f3f4f6 !important;
+                opacity: 0.5 !important;
+            }
+            
+            /* Reduce spacing in the main container */
+            .main .block-container > div {
+                padding-top: 0 !important;
+                padding-bottom: 0 !important;
             }
         </style>""",
         unsafe_allow_html=True,
@@ -682,8 +830,10 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
 
     # Initial load of content
     if not st.session_state.get("initial_load_processed", False):
+        # Use direct default content instead of session state variable
+        default_fallback = "# Welcome\n\nStart editing your document here."
         initial_content_to_load = st.session_state.get(
-            "initial_markdown_content", st.session_state.default_markdown_content
+            "initial_markdown_content", default_fallback
         )
         try:
             parsed_blocks = parse_full_markdown_to_editor_blocks(
@@ -709,8 +859,6 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
         st.session_state.initial_load_processed = True
         if "initial_markdown_content" in st.session_state:
             del st.session_state.initial_markdown_content
-        if "default_markdown_content" in st.session_state:
-            del st.session_state.default_markdown_content
 
     # --- Document Flow Area (Editor and Preview Panes) ---
     editor_pane, preview_pane = st.columns(2)
@@ -721,19 +869,14 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
     with preview_pane:
         _render_preview_pane()
 
-    # Debug Console - Rendered based on session state
-    debug_data_str = json.dumps(
-        st.session_state.documentEditorBlocks, indent=2, ensure_ascii=False
-    )
-    # Ensure show_debug_console is initialized (already done in top menu, but good for safety)
+    # Debug Console - Chrome-like live logging console
     if "show_debug_console" not in st.session_state:
         st.session_state.show_debug_console = False
 
     # The height of the component can be minimal as the console is fixed position
     st.components.v1.html(
         ui_elements.render_debug_console(
-            debug_data_json_string=debug_data_str,
-            initial_visible=st.session_state.show_debug_console,
+            initial_visible=st.session_state.show_debug_console
         ),
         height=0,  # Console is fixed, doesn't need layout space
     )
