@@ -10,7 +10,7 @@ def main():
     """
     # Get the directory where main.py is located
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    app_path = os.path.join(script_dir, "app.py")
+    app_path = os.path.join(script_dir, "src/app.py")
 
     if not os.path.exists(app_path):
         print(f"Error: app.py not found at {app_path}", file=sys.stderr)

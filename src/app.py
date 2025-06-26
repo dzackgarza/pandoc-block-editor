@@ -1,9 +1,9 @@
 import streamlit as st
 import uuid
-from src import pandoc_utils  # Import the new module
+import pandoc_utils  # Import the new module
 from io import StringIO  # Needed for file uploader processing
 import json  # For passing debug data
-from src import ui_elements  # Import the new UI elements module
+import ui_elements  # Import the new UI elements module
 
 # --- Global Helper Functions & Data Structures ---
 
