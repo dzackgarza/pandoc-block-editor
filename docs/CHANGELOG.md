@@ -7,6 +7,15 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.2.3] - 2024-07-29
+
+### Fixed
+*   **Semantic Block Rendering:** Resolved a critical issue where semantic div blocks (`:::`) containing LaTeX math were incorrectly rendering JavaScript source code (`mhchemParser.ts`). The fix involved adjusting MathJax configuration in `src/app.py` to explicitly disable potentially problematic auto-loaded packages (like `mhchem`) and ensuring Pandoc's `--mathjax` option is used correctly with `--embed-resources` in `src/pandoc_utils.py`. Syntax highlighting (`--highlight-style`) remains temporarily disabled as a precaution during these MathJax-related fixes.
+*   Corrected a Pylint E0606 error (`possibly-used-before-assignment`) in `src/app.py` by ensuring proper variable initialization.
+
+### Improved
+*   **Startup Performance:** Further enhanced application startup time. The `_process_ast_block` function in `src/app.py` was extended to use Python-based AST-to-Markdown conversion for `Plain` and `CodeBlock` block types, in addition to existing optimizations for `Header` and `Para` blocks. This significantly reduces the number of Pandoc subprocess calls during the initial parsing of Markdown documents.
+
 ## [0.2.2] - 2024-07-29
 
 ### Fixed

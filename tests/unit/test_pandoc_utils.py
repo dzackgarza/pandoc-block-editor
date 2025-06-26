@@ -221,3 +221,62 @@ else:  # pypandoc itself not imported
         "pypandoc library not found, skipping pandoc_utils tests",
         allow_module_level=True,
     )
+
+PROBLEM_SEMANTIC_DIV_MD = """
+::: {#semantic-div-1 .theorem type="Pythagorean"}
+This is a semantic block, styled as a theorem.
+It might contain **strong emphasis** and equations like $a^2 + b^2 = c^2$.
+This div has an ID and a class.
+:::
+"""
+
+# Note: Pandoc converts attributes like `type="Pythagorean"` into classes if not standard,
+# or into data-* attributes. For `{#id .class1 .class2 key="val"}`,
+# it becomes `<div id="id" class="class1 class2" data-key="val">`.
+# If `type` is given as a class `.theorem .type_Pythagorean` or similar,
+# it would be part of the class attribute.
+# The original torture test was `::: {#semantic-div-1 .theorem type="Pythagorean"}`
+# Pandoc typically treats bare words in fenced div attributes as classes.
+# So, `type="Pythagorean"` likely becomes class `type` and class `Pythagorean` or similar.
+# Or, if `type` is a known attribute for some extension, it might be handled differently.
+# For this test, we'll assume `type` becomes a class `type` and `Pythagorean` a class.
+# A more robust test would be `key="value"` which becomes `data-key="value"`.
+# Let's assume for now Pandoc makes `type="Pythagorean"` into `class="... theorem type Pythagorean ..."`
+# or similar. The key is the content and absence of JS source.
+
+EXPECTED_HTML_FROM_SEMANTIC_DIV_SUBSTRINGS = [
+    '<div id="semantic-div-1"',  # Check for ID
+    'class="theorem',  # Check for theorem class
+    # 'type="Pythagorean"', # This might become data-type or part of class
+    "Pythagorean",  # Ensure the word Pythagorean is present from the attribute
+    "This is a semantic block, styled as a theorem.",
+    "<strong>strong emphasis</strong>",
+    "\\(a^2 + b^2 = c^2\\)",  # MathJax formatted math
+    "This div has an ID and a class.",
+    "</div>",
+]
+
+
+# Test for the problematic semantic div
+def test_convert_problematic_semantic_div_to_html():
+    """
+    Tests conversion of a specific semantic div that was causing issues.
+    Ensures it doesn't contain problematic JS code and renders expected content.
+    """
+    # Ensure pygments is re-enabled for this test if it was disabled globally for other tests
+    # This can be done by explicitly passing relevant args to convert_markdown_to_html
+    # or by assuming the global pandoc_utils state is what we want to test.
+    # For now, we test the current global state of pandoc_utils.
+    html_output = pandoc_utils.convert_markdown_to_html(PROBLEM_SEMANTIC_DIV_MD)
+
+    print("\n--- HTML output for problematic semantic div: ---")
+    print(html_output)  # For debugging in test runs
+
+    assert (
+        "mhchemParser.ts" not in html_output
+    ), "Should not contain mhchemParser.ts source"
+    # A less strict check for "mhchem" as it might appear in legitimate MathJax classes if used
+    # assert "mhchem" not in html_output.lower(), "Should not contain 'mhchem' if it's not used"
+
+    for substring in EXPECTED_HTML_FROM_SEMANTIC_DIV_SUBSTRINGS:
+        assert substring in html_output, f"Expected substring '{substring}' not found."

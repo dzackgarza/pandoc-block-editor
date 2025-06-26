@@ -131,14 +131,32 @@ def _process_ast_block(ast_block, pandoc_api_version):
         block_kind = "paragraph"
         # block_attrs remains empty, block_level remains 0
 
-    else:  # Default for CodeBlock, Plain, RawBlock, Table, Lists etc.
+    elif ast_block["t"] == "Plain":
         actual_block_id = block_id_str if block_id_str else str(uuid.uuid4())
-        # Fallback to Pandoc for these more complex or less common block types
+        content = _inlines_to_markdown(ast_block["c"])
+        block_kind = (
+            "plain"  # Or treat as paragraph if 'plain' is not a useful distinction
+        )
+
+    elif ast_block["t"] == "CodeBlock":
+        actual_block_id = block_id_str if block_id_str else str(uuid.uuid4())
+        # c[0] is attributes: [id, [classes], [[key,val]]]
+        # c[1] is the code string
+        attrs, code_text = ast_block["c"]
+        lang_class = ""
+        if attrs[1]:  # classes
+            lang_class = attrs[1][0] if attrs[1] else ""  # Take first class as language
+
+        # Basic reconstruction: ```lang\ncode\n```
+        # Pandoc's own reconstruction might be more nuanced with attributes.
+        # For performance, this simple version is used.
+        content = f"```{lang_class}\n{code_text}\n```"
+        block_kind = "code"
+        block_attrs = {"classes": attrs[1]}  # Store original classes
+
+    else:  # Fallback for RawBlock, Table, Lists, BlockQuote, HorizontalRule etc.
+        actual_block_id = block_id_str if block_id_str else str(uuid.uuid4())
         content_ast_blocks = [ast_block]
-        # Determine kind more accurately if possible, or keep default 'paragraph'
-        # For example, ast_block["t"] could be "CodeBlock", "BulletList", etc.
-        # This part might need refinement if specific kinds are important here.
-        # For now, the content is the key.
         current_block_ast_for_content = {
             "pandoc-api-version": pandoc_api_version,
             "meta": {},
@@ -541,10 +559,14 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
         <script>
         window.MathJax = {
           tex: {
+            packages: {'[-]': ['mhchem', 'physics', 'ams']}, // Attempt to disable mhchem and other common auto-loads not strictly needed for basic math
             inlineMath: [['$', '$'], ['\\\\(', '\\\\)']],
             displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']],
             processEscapes: true
           },
+          // loader: { // Might need to configure loader if packages alone isn't enough
+          //   load: ['input/tex', 'output/chtml', 'ui/menu'] // Minimal set
+          // },
           svg: { fontCache: 'global' },
           options: {
             skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],

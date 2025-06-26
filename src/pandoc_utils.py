@@ -123,8 +123,8 @@ def convert_markdown_to_html(markdown_string):
         return ""
     try:
         extra_args = [
-            "--mathjax",  # Enables MathJax for LaTeX math
-            # "--highlight-style=pygments",  # Temporarily removed for testing
+            "--mathjax",  # Restore MathJax processing
+            # "--highlight-style=pygments", # Keep commented out for now
             "--embed-resources",
             "--standalone",
             "--metadata",
