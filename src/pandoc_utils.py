@@ -1,11 +1,17 @@
 import json
 import os
+import hashlib
+import subprocess
+from functools import lru_cache
 
 import pypandoc
 
 # Try to get pandoc path if it's bundled or in a known location
 # This is a common pattern if you're distributing pandoc with your app
 PANDOC_PATH = os.getenv("PANDOC_PATH")
+
+# Simple cache for HTML conversions to avoid repeated Pandoc calls
+_html_cache = {}
 
 
 def _get_pandoc_path():
@@ -47,6 +53,7 @@ def parse_markdown_to_ast_json(markdown_string):
             to="json",
             format="markdown",
             encoding="utf-8",
+            extra_args=["--metadata", "title="],  # Suppress title warnings
         )
         return json.loads(ast_json_str)
     except RuntimeError as e:
@@ -101,7 +108,7 @@ def convert_ast_json_to_markdown(ast_json, is_full_ast=False):
             format="json",
             encoding="utf-8",
             extra_args=[
-                "--strip-comments",
+                "--metadata", "title=",  # Suppress title warnings
                 "--wrap=none",  # Try to preserve line breaks as much as possible
             ],
         )
@@ -114,27 +121,42 @@ def convert_ast_json_to_markdown(ast_json, is_full_ast=False):
         return f"Unexpected IO/Value error converting AST to Markdown: {e}"
 
 
-def convert_markdown_to_html(markdown_string):
+def convert_markdown_to_html(markdown_string, use_cache=True):
     """
     Converts Markdown directly to HTML using Pandoc.
-    Includes MathJax and Pygments syntax highlighting.
+    Includes local MathML and Pygments syntax highlighting for faster performance.
+    
+    Args:
+        markdown_string (str): The Markdown content to convert
+        use_cache (bool): Whether to use caching for faster repeated conversions
     """
     if not markdown_string:
         return ""
+    
+    # Check cache first if enabled
+    if use_cache:
+        cache_key = hashlib.md5(markdown_string.encode('utf-8')).hexdigest()
+        if cache_key in _html_cache:
+            return _html_cache[cache_key]
+    
     try:
         extra_args = [
-            "--mathjax",  # Enables MathJax for LaTeX math
+            "--mathml",  # Use MathML instead of external MathJax for speed
             "--highlight-style=pygments",  # Enables syntax highlighting
-            "--self-contained",  # Embeds assets (though MathJax links to CDN)
-            "--strip-comments",
+            "--metadata", "title=",  # Suppress title warnings
         ]
         html_output = pypandoc.convert_text(
             source=markdown_string,
-            to="html5",
+            to="html",  # HTML fragments, not full documents
             format="markdown",
             extra_args=extra_args,
             encoding="utf-8",
         )
+        
+        # Cache the result if caching is enabled
+        if use_cache:
+            _html_cache[cache_key] = html_output
+        
         return html_output
     except RuntimeError as e:
         print(f"Error in convert_markdown_to_html: {e}")
@@ -156,6 +178,88 @@ def convert_markdown_to_html(markdown_string):
             "border: 1px solid red;'>Unexpected IO/Value error during HTML "
             f"rendering:\n{str(e)}</pre>"
         )
+
+
+def convert_markdown_to_html_fast(markdown_string):
+    """
+    Fast HTML conversion for block fragments - no CSS, no title warnings.
+    """
+    if not markdown_string:
+        return ""
+    try:
+        # Minimal args for HTML fragments only
+        extra_args = [
+            "--metadata", "title=",  # Suppress title warnings
+        ]
+        html_output = pypandoc.convert_text(
+            source=markdown_string,
+            to="html",  # Just html, not html5 with full document
+            format="markdown",
+            extra_args=extra_args,
+            encoding="utf-8",
+        )
+        return html_output
+    except RuntimeError as e:
+        print(f"Error in convert_markdown_to_html_fast: {e}")
+        return f"<p>Error: {e}</p>"
+    except (IOError, ValueError) as e:
+        print(f"Unexpected error in convert_markdown_to_html_fast: {e}")
+        return f"<p>Unexpected error: {e}</p>"
+
+
+def convert_markdown_to_html_direct(markdown_string, use_cache=True):
+    """
+    Direct pandoc subprocess call for maximum speed.
+    """
+    if not markdown_string:
+        return ""
+    
+    # Check cache first if enabled
+    if use_cache:
+        cache_key = hashlib.md5(markdown_string.encode('utf-8')).hexdigest()
+        if cache_key in _html_cache:
+            return _html_cache[cache_key]
+    
+    try:
+        # Direct pandoc call with minimal overhead
+        result = subprocess.run([
+            'pandoc',
+            '--from=markdown',
+            '--to=html',
+            '--metadata', 'title=',
+        ], 
+        input=markdown_string,
+        text=True,
+        capture_output=True,
+        timeout=5  # Prevent hanging
+        )
+        
+        if result.returncode == 0:
+            html_output = result.stdout
+            
+            # Cache the result if caching is enabled
+            if use_cache:
+                _html_cache[cache_key] = html_output
+            
+            return html_output
+        else:
+            print(f"Pandoc error: {result.stderr}")
+            return f"<p>Pandoc error: {result.stderr}</p>"
+            
+    except subprocess.TimeoutExpired:
+        return "<p>Pandoc timeout - content too complex</p>"
+    except FileNotFoundError:
+        # Fall back to pypandoc if pandoc not found
+        return convert_markdown_to_html_fast(markdown_string)
+    except Exception as e:
+        print(f"Direct pandoc error: {e}")
+        return f"<p>Direct pandoc error: {e}</p>"
+
+
+def clear_html_cache():
+    """Clear the HTML conversion cache to free memory."""
+    global _html_cache
+    _html_cache.clear()
 
 
 if __name__ == "__main__":

@@ -6,140 +6,118 @@ rendered using st.components.v1.html.
 import json  # For passing data to JS
 
 
-def render_debug_modal(debug_data_json_string="{}", initial_visible=False):
+def render_debug_console(debug_data_json_string="{}", initial_visible=False):
     """
-    Renders an HTML modal to display debug information.
+    Renders a debug console that slides up from the bottom of the screen.
 
     Args:
         debug_data_json_string (str): A JSON string representing the data to display.
-        initial_visible (bool): Whether the modal should be visible initially.
+        initial_visible (bool): Whether the console should be visible initially.
     """
-    modal_id = "debug-info-modal"
-    content_id = "debug-modal-content"
-    # Determine initial display style based on initial_visible
-    initial_display_style = "flex" if initial_visible else "none"
+    console_id = "debug-console"
+    content_id = "debug-console-content"
+    # Determine initial bottom position based on initial_visible
+    initial_bottom = "0" if initial_visible else "-300px"
 
     html_content = f"""
 <style>
-    #{modal_id} {{
-        display: {initial_display_style}; /* Controlled by initial_visible */
+    #{console_id} {{
         position: fixed;
-        z-index: 2000; /* Higher than FAB */
+        bottom: {initial_bottom};
         left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        overflow: auto;
-        background-color: rgba(0,0,0,0.4);
-        align-items: center; /* For vertical centering */
-        justify-content: center; /* For horizontal centering */
-    }}
-    .debug-modal-content-wrapper {{
-        background-color: #fefefe;
-        margin: auto;
-        padding: 20px;
-        border: 1px solid #888;
-        width: 80%;
-        max-width: 700px;
-        max-height: 80vh; /* Max height to prevent overflow */
+        right: 0;
+        height: 300px;
+        background-color: #1e1e1e;
+        color: #ffffff;
+        border-top: 2px solid #333;
+        z-index: 1500;
+        transition: bottom 0.3s ease-in-out;
         display: flex;
         flex-direction: column;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-        border-radius: 5px;
+        box-shadow: 0 -5px 15px rgba(0,0,0,0.3);
     }}
-    .debug-modal-header {{
+    .debug-console-header {{
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding-bottom: 10px;
-        border-bottom: 1px solid #eee;
+        padding: 10px 15px;
+        background-color: #2d2d2d;
+        border-bottom: 1px solid #444;
+        min-height: 20px;
     }}
-    .debug-modal-header h2 {{
+    .debug-console-title {{
         margin: 0;
-        font-size: 1.5em;
+        font-size: 14px;
+        font-weight: bold;
+        color: #fff;
     }}
-    .debug-modal-close-btn {{
+    .debug-console-close-btn {{
         color: #aaa;
-        font-size: 28px;
+        font-size: 18px;
         font-weight: bold;
         cursor: pointer;
         background: none;
         border: none;
+        padding: 0;
+        width: 20px;
+        height: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }}
-    .debug-modal-close-btn:hover,
-    .debug-modal-close-btn:focus {{
-        color: black;
-        text-decoration: none;
+    .debug-console-close-btn:hover {{
+        color: #fff;
     }}
     #{content_id} {{
-        flex-grow: 1; /* Allow content to take available space */
-        overflow-y: auto; /* Scrollable content */
-        background-color: #f0f0f0;
-        border: 1px solid #ddd;
-        padding: 10px;
-        font-family: monospace;
+        flex-grow: 1;
+        overflow-y: auto;
+        background-color: #1e1e1e;
+        padding: 15px;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
         white-space: pre;
-        margin-top: 10px;
+        font-size: 12px;
+        line-height: 1.4;
     }}
 </style>
 
-<div id="{modal_id}">
-    <div class="debug-modal-content-wrapper">
-        <div class="debug-modal-header">
-            <h2>Debug Information</h2>
-            <button class="debug-modal-close-btn" title="Close Debug Modal">&times;</button>
-        </div>
-        <pre id="{content_id}">{json.dumps(json.loads(debug_data_json_string), indent=2, ensure_ascii=False)}</pre>
+<div id="{console_id}">
+    <div class="debug-console-header">
+        <h3 class="debug-console-title">🐛 Debug Console</h3>
+        <button class="debug-console-close-btn" title="Close Debug Console">&times;</button>
     </div>
+    <pre id="{content_id}">{json.dumps(json.loads(debug_data_json_string), indent=2, ensure_ascii=False)}</pre>
 </div>
 
 <script>
 (function() {{
-    const modal = document.getElementById('{modal_id}');
-    const closeButton = modal.querySelector('.debug-modal-close-btn');
+    const console = document.getElementById('{console_id}');
+    const closeButton = console.querySelector('.debug-console-close-btn');
 
-    function closeModal() {{
-        if (modal) modal.style.display = 'none';
-        // We cannot directly set st.session_state.show_debug_modal to false here.
-        // The Streamlit button "Toggle Debug Info" is responsible for that.
-        // This just closes the modal visually. If "Toggle Debug Info" is clicked again
-        // while it's true, Streamlit will re-render the component with initial_visible=true.
+    function closeConsole() {{
+        if (console) console.style.bottom = '-300px';
+    }}
+
+    function openConsole() {{
+        if (console) console.style.bottom = '0';
     }}
 
     if (closeButton) {{
-        closeButton.addEventListener('click', closeModal);
+        closeButton.addEventListener('click', closeConsole);
     }}
-
-    // Close modal if clicked outside the content wrapper
-    window.addEventListener('click', function(event) {{
-        if (event.target === modal) {{
-            closeModal();
-        }}
-    }});
 
     // Optional: Close with Escape key
     document.addEventListener('keydown', function(event) {{
-        if (event.key === "Escape" && modal.style.display === 'flex') {{
-            closeModal();
+        if (event.key === "Escape" && console.style.bottom === '0px') {{
+            closeConsole();
         }}
     }});
 
-    // This component relies on Streamlit to re-render it with the correct
-    // initial_visible state. The 'Toggle Debug Info' button in app.py
-    // handles st.session_state.show_debug_modal and st.rerun().
-    // If initial_visible is true, this script ensures it's shown.
-    // If the modal was previously visible due to JavaScript interaction (not Streamlit state)
-    // and Streamlit re-renders with initial_visible=false, it will be hidden.
-    // The Streamlit state is the source of truth for initial visibility on re-renders.
-
-    // Ensure correct display state on script load based on initial_visible.
-    // This is mostly handled by the inline style, but good to be explicit.
-    // if ({str(initial_visible).lower()}) {{
-    //     if(modal) modal.style.display = 'flex';
-    // }} else {{
-    //     if(modal) modal.style.display = 'none';
-    // }}
-    // The above is redundant due to f-string in style.
+    // Set initial state
+    if ({str(initial_visible).lower()}) {{
+        openConsole();
+    }} else {{
+        closeConsole();
+    }}
 }})();
 </script>
 """

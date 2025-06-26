@@ -271,7 +271,9 @@ def _render_preview_pane():
         st.markdown(viewer_id_display_html, unsafe_allow_html=True)
         preview_div_id = f"preview-block-{block['id']}-{i}"
         try:
-            html_content = pandoc_utils.convert_markdown_to_html(block["content"])
+            # Use direct pandoc call for maximum speed
+            html_content = pandoc_utils.convert_markdown_to_html_direct(block["content"])
+            
             preview_wrapper_html = (
                 f"<div id='{preview_div_id}' "
                 f"class='block-preview-wrapper'>{html_content}</div>"
@@ -310,52 +312,157 @@ def _render_preview_pane():
         st.markdown("---")
 
 
-def _render_sidebar_menu():
-    """Renders the sidebar menu."""
-    with st.sidebar:
-        st.title("📋 Pandoc Editor Menu")
-        st.markdown("---")
-
-        # File Menu
-        st.subheader("📄 File")
-        uploaded_file = st.file_uploader(
-            "Open Document", type=["md", "markdown"], key="sidebar_file_uploader"
+def _render_top_menu_bar():
+    """Renders the desktop app-style top menu bar using Tailwind CSS."""
+    
+    # Create menu bar with Tailwind CSS
+    menu_bar_html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script>
+            tailwind.config = {
+                theme: {
+                    extend: {
+                        fontFamily: {
+                            'mono': ['Monaco', 'Menlo', 'Ubuntu Mono', 'monospace']
+                        }
+                    }
+                }
+            }
+        </script>
+    </head>
+    <body class="m-0 p-0">
+        <div class="bg-gradient-to-b from-gray-50 to-gray-100 border-b border-gray-300 px-4 py-2 flex items-center gap-2">
+            <span class="font-semibold text-gray-700 mr-4">📋 Pandoc Editor</span>
+            
+            <div class="flex border border-gray-300 rounded overflow-hidden bg-white">
+                <button id="menu-open" class="px-3 py-1.5 text-sm hover:bg-gray-100 transition-colors border-none bg-white cursor-pointer">
+                    📁 Open
+                </button>
+                <button id="menu-save" class="px-3 py-1.5 text-sm hover:bg-gray-100 transition-colors border-l border-gray-300 bg-white cursor-pointer">
+                    💾 Save
+                </button>
+                <button id="menu-add" class="px-3 py-1.5 text-sm hover:bg-gray-100 transition-colors border-l border-gray-300 bg-white cursor-pointer">
+                    ➕ Add Block
+                </button>
+                <button id="menu-debug" class="px-3 py-1.5 text-sm hover:bg-gray-100 transition-colors border-l border-gray-300 bg-white cursor-pointer">
+                    🐛 Debug
+                </button>
+            </div>
+        </div>
+        
+        <!-- Hidden file input for file operations -->
+        <input type="file" id="file-input" accept=".md,.markdown" style="display: none;">
+        
+        <script>
+            // File input handler
+            document.getElementById('file-input').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const content = e.target.result;
+                        // Encode content for URL
+                        const encodedContent = btoa(unescape(encodeURIComponent(content)));
+                        window.location.href = window.location.pathname + '?file_content=' + encodedContent;
+                    };
+                    reader.readAsText(file);
+                }
+            });
+            
+            // Helper function to get current document content for saving
+            function getCurrentDocument() {
+                // Try to reconstruct from text areas
+                const textAreas = document.querySelectorAll('textarea');
+                let content = "# Document\\n\\n";
+                textAreas.forEach((textarea, index) => {
+                    if (textarea.value.trim()) {
+                        content += textarea.value + "\\n\\n";
+                    }
+                });
+                return content || "# Empty Document\\n\\nNo content found.";
+            }
+            
+            // Menu event handlers
+            document.getElementById('menu-open')?.addEventListener('click', function() {
+                document.getElementById('file-input').click();
+            });
+            
+            document.getElementById('menu-save')?.addEventListener('click', function() {
+                const content = getCurrentDocument();
+                const blob = new Blob([content], { type: 'text/markdown' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'document.md';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            });
+            
+            document.getElementById('menu-add')?.addEventListener('click', function() {
+                window.location.href = window.location.pathname + '?add_block=true';
+            });
+            
+            document.getElementById('menu-debug')?.addEventListener('click', function() {
+                window.location.href = window.location.pathname + '?toggle_debug=true';
+            });
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', function(e) {
+                if (e.ctrlKey && e.key === 'o') {
+                    e.preventDefault();
+                    document.getElementById('file-input').click();
+                }
+                if (e.ctrlKey && e.key === 's') {
+                    e.preventDefault();
+                    document.getElementById('menu-save').click();
+                }
+            });
+            
+            // No localStorage handling needed - using query params instead
+        </script>
+    </body>
+    </html>
+    """
+    
+    # Render the menu bar
+    st.components.v1.html(menu_bar_html, height=60)
+    
+    # Check for URL query parameters to handle actions
+    query_params = st.query_params
+    
+    if 'add_block' in query_params:
+        st.session_state.documentEditorBlocks.append(
+            create_editor_block(content="")
         )
-        if uploaded_file is not None:
-            stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
+        # Clear the query param and rerun
+        st.query_params.clear()
+        st.rerun()
+    
+    if 'toggle_debug' in query_params:
+        if "show_debug_console" not in st.session_state:
+            st.session_state.show_debug_console = False
+        st.session_state.show_debug_console = not st.session_state.show_debug_console
+        # Clear the query param and rerun
+        st.query_params.clear()
+        st.rerun()
+    
+    if 'file_content' in query_params:
+        try:
+            import base64
+            content = base64.b64decode(query_params['file_content']).decode('utf-8')
             st.session_state.documentEditorBlocks = (
-                parse_full_markdown_to_editor_blocks(stringio.read())
+                parse_full_markdown_to_editor_blocks(content)
             )
-            st.session_state.sidebar_file_uploader = None  # Clear uploader
+            # Clear the query param and rerun
+            st.query_params.clear()
             st.rerun()
-
-        full_doc_md_for_download = reconstruct_markdown_from_editor_blocks()
-        st.download_button(
-            label="Save Document",
-            data=full_doc_md_for_download,
-            file_name="document.md",
-            mime="text/markdown",
-            key="sidebar_download_button",
-        )
-        st.markdown("---")
-
-        # Edit Menu
-        st.subheader("✏️ Edit")
-        if st.button("➕ Add New Block", key="sidebar_add_block_button"):
-            st.session_state.documentEditorBlocks.append(
-                create_editor_block(content="# New Block\n\nStart writing here...")
-            )
-            st.rerun()
-        st.markdown("---")
-
-        # View Menu
-        st.subheader("👁️ View")
-        if "show_debug_modal" not in st.session_state:  # Initialize if not present
-            st.session_state.show_debug_modal = False
-
-        if st.button("Toggle Debug Info", key="sidebar_toggle_debug_button"):
-            st.session_state.show_debug_modal = not st.session_state.show_debug_modal
-            st.rerun()  # Rerun to update modal visibility
+        except Exception as e:
+            st.error(f"Error processing uploaded file: {e}")
 
 
 # --- Main Application ---
@@ -366,35 +473,153 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
     """Main function to run the Streamlit application."""
     st.set_page_config(layout="wide", page_title="Pandoc Block Editor")
 
-    # Inject Global Custom CSS
-    # Line lengths adjusted
+    # Inject Tailwind CSS and custom styling
     st.markdown(
         """<style>
-            div[data-testid="stHorizontalBlock"] { align-items: flex-start; }
+            /* Hide sidebar navigation */
+            [data-testid="stSidebarNav"] { display: none !important; }
+            [data-testid="stSidebar"] { display: none !important; }
+            
+            /* Clean interface - no hidden controls needed */
+            
+            /* Desktop app container with Tailwind-inspired styling */
+            .main .block-container {
+                padding: 0 !important;
+                max-width: none !important;
+                background: #f9fafb;
+                min-height: 100vh;
+            }
+            
+            /* Clean block alignment with card styling */
+            div[data-testid="stHorizontalBlock"] { 
+                align-items: flex-start;
+                background: white;
+                border-radius: 12px;
+                margin: 12px;
+                padding: 20px;
+                box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+                border: 1px solid #e5e7eb;
+            }
+            
+            /* Block ID styling with modern badge design */
             .block-id-display {
-                font-size: 0.75em; color: #888; margin-bottom: 2px;
-                height: 20px; line-height: 20px;
+                font-size: 11px; 
+                color: #6b7280; 
+                margin-bottom: 8px;
+                font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+                background: #f3f4f6;
+                padding: 4px 8px;
+                border-radius: 6px;
+                display: inline-block;
+                border: 1px solid #e5e7eb;
             }
-            div[data-testid="stTextArea"] > label { display: none; }
-            div[data-testid="stTextArea"] textarea { padding-top: 5px; }
-            .block-preview-wrapper > div { padding-top: 5px; margin-top:0; }
+            
+            /* Editor styling with modern input design */
+            div[data-testid="stTextArea"] > label { display: none !important; }
+            div[data-testid="stTextArea"] textarea { 
+                padding: 16px !important; 
+                font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+                font-size: 14px !important;
+                line-height: 1.6 !important;
+                border: 2px solid #e5e7eb !important;
+                border-radius: 8px !important;
+                background: #ffffff !important;
+                transition: border-color 0.2s !important;
+                resize: vertical !important;
+                min-height: 120px !important;
+            }
+            
+            div[data-testid="stTextArea"] textarea:focus { 
+                border-color: #3b82f6 !important;
+                outline: none !important;
+                box-shadow: 0 0 0 3px rgb(59 130 246 / 0.1) !important;
+            }
+            
+            /* Preview styling with modern card design */
+            .block-preview-wrapper {
+                background: #ffffff;
+                border: 2px solid #e5e7eb;
+                border-radius: 8px;
+                padding: 16px;
+                min-height: 120px;
+            }
+            .block-preview-wrapper > div { 
+                padding: 0;
+                margin: 0;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+                line-height: 1.7;
+                color: #374151;
+            }
+            
+            /* Typography improvements with better contrast */
+            .block-preview-wrapper h1 { 
+                margin-top: 0; 
+                color: #111827;
+                font-weight: 700;
+                border-bottom: 2px solid #e5e7eb;
+                padding-bottom: 8px;
+            }
+            .block-preview-wrapper h2 { 
+                color: #1f2937;
+                font-weight: 600;
+                margin-top: 1.5rem;
+            }
+            .block-preview-wrapper h3 { 
+                color: #374151;
+                font-weight: 600;
+                margin-top: 1.25rem;
+            }
+            .block-preview-wrapper p { 
+                color: #374151; 
+                margin-bottom: 1rem;
+                line-height: 1.7;
+            }
+            .block-preview-wrapper code { 
+                background: #f3f4f6; 
+                padding: 2px 6px; 
+                border-radius: 4px;
+                font-size: 0.9em;
+                color: #dc2626;
+                border: 1px solid #e5e7eb;
+            }
+            .block-preview-wrapper pre {
+                background: #f9fafb;
+                border: 1px solid #e5e7eb;
+                border-radius: 8px;
+                padding: 16px;
+                overflow-x: auto;
+                font-size: 13px;
+                line-height: 1.5;
+            }
+            .block-preview-wrapper pre code {
+                background: none;
+                border: none;
+                padding: 0;
+                color: #374151;
+            }
+            
+            /* Semantic block cards with special styling */
+            .block-preview-wrapper div[class*="theorem"],
+            .block-preview-wrapper div[class*="definition"],
+            .block-preview-wrapper div[class*="proof"],
+            .block-preview-wrapper div[class*="callout"] {
+                border-left: 4px solid #3b82f6;
+                background: #eff6ff;
+                padding: 12px 16px;
+                margin: 12px 0;
+                border-radius: 0 6px 6px 0;
+            }
+            
+            /* Remove default margins */
+            .element-container {
+                margin-bottom: 0 !important;
+            }
+            
+            /* Separator lines */
             hr {
-                margin-top: 10px !important; margin-bottom: 10px !important;
-                border-top: 1px solid #ddd !important;
-            }
-            [data-testid="stSidebarNav"] { display: none; }
-            .stButton>button { width: 100%; margin-bottom: 5px; }
-            div[data-testid="stFileUploader"] > label {
-                width: 100%; display: block; text-align: center;
-                padding: 0.25rem 0.75rem; background-color: #f0f2f6;
-                color: #31333F; border: 1px solid #f0f2f6;
-                border-radius: 0.25rem; cursor: pointer; margin-bottom: 5px;
-            }
-            div[data-testid="stFileUploader"] > label:hover {
-                border-color: #ff4b4b; color: #ff4b4b;
-            }
-            div[data-testid="stDownloadButton"] > button:hover {
-                border-color: #ff4b4b !important; color: #ff4b4b !important;
+                margin: 20px 0 !important;
+                border: none !important;
+                border-top: 1px solid #e5e7eb !important;
             }
         </style>""",
         unsafe_allow_html=True,
@@ -438,37 +663,10 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
     """
     st.components.v1.html(mathjax_script_html, height=0)
 
-    # --- Sidebar (Menubar) ---
-    _render_sidebar_menu()
+    # --- Top Menu Bar ---
+    _render_top_menu_bar()
 
     # --- Main Content Area ---
-    st.title("Pandoc Block Editor")
-
-    # Add the FAB and its hidden trigger button
-    # The key for the hidden button must match the one used in ui_elements.render_floating_add_button()
-    hidden_add_block_key = "hidden_add_block_trigger_button"
-    if st.button(
-        "Add Block (Hidden Trigger)",
-        key=hidden_add_block_key,
-        help="This is hidden and triggered by FAB",
-        type="primary",
-        # Use some CSS to truly hide it if Streamlit's default button is still visible
-        # However, st.button doesn't have a direct visibility param.
-        # A common trick is to put it in an empty container that's not rendered,
-        # or use st.columns to make it very small / out of sight.
-        # For now, let's assume the FAB's JS can click it even if technically in DOM.
-        # A cleaner way is to use st.session_state flags if JS can set them.
-        # Given the current FAB JS, it expects a clickable button.
-        # We can wrap it in a div and hide the div with CSS.
-    ):
-        st.session_state.documentEditorBlocks.append(create_editor_block(content=""))
-        st.rerun()
-
-    # Render the FAB - this should be done after the hidden button it triggers
-    # so the button exists in the DOM when the FAB's JS might run.
-    st.components.v1.html(
-        ui_elements.render_floating_add_button(), height=100
-    )  # Increased height
 
     if st.session_state.get("missing_torture_file", False):
         st.warning(
@@ -523,22 +721,21 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
     with preview_pane:
         _render_preview_pane()
 
-    # Debug Modal - Rendered based on session state.
+    # Debug Console - Rendered based on session state
     debug_data_str = json.dumps(
         st.session_state.documentEditorBlocks, indent=2, ensure_ascii=False
     )
-    # Ensure show_debug_modal is initialized (already done in sidebar logic, but good for safety)
-    if "show_debug_modal" not in st.session_state:
-        st.session_state.show_debug_modal = False
+    # Ensure show_debug_console is initialized (already done in top menu, but good for safety)
+    if "show_debug_console" not in st.session_state:
+        st.session_state.show_debug_console = False
 
-    # The height of the component can be minimal as the modal is fixed position.
-    # The component itself doesn't take up space in the normal document flow.
+    # The height of the component can be minimal as the console is fixed position
     st.components.v1.html(
-        ui_elements.render_debug_modal(
+        ui_elements.render_debug_console(
             debug_data_json_string=debug_data_str,
-            initial_visible=st.session_state.show_debug_modal,
+            initial_visible=st.session_state.show_debug_console,
         ),
-        height=0,  # Modal is fixed, doesn't need layout space.
+        height=0,  # Console is fixed, doesn't need layout space
     )
 
 

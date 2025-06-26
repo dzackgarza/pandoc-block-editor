@@ -90,19 +90,45 @@ We can refer to Maxwell's equations using `\cref{eq:maxwell}`.
 
 This is a reference to a non-existent label: `\cref{eq:nonexistent}`.
 
-::: {#semantic-div-2 .nested-container}
+::: {#semantic-div-2 .nested-container data-level="outer"}
 This is an outer semantic block.
 It can contain other blocks, including other semantic blocks or normal paragraphs.
 
 This is a paragraph inside the outer semantic block.
 
-::: {#nested-div .definition}
+::: {#nested-div .definition data-type="mathematical"}
 This is a nested semantic block (a definition).
 Content within the nested block.
 It has its own ID and class.
 :::
 
 A paragraph following the nested div, but still inside the outer div.
+:::
+
+::: {.callout .callout-warning}
+**Warning:** This is a callout box with warning styling.
+It demonstrates how fenced divs can be used for special content blocks.
+:::
+
+::: {.code-example lang="python"}
+```python
+# This code is inside a fenced div
+def example_function():
+    return "Hello from fenced div!"
+```
+:::
+
+::: {#proof-block .proof .theorem data-number="1.1"}
+**Proof of Concept:** This div shows how academic content can be structured.
+
+*Given:* Some mathematical statement
+*To Prove:* The statement is true
+*Proof:* By construction... ∎
+:::
+
+::: custom-class another-class="value" data-custom="attribute"
+This div tests multiple classes and custom attributes.
+It should parse correctly and preserve all metadata.
 :::
 
 A final paragraph to conclude the document.

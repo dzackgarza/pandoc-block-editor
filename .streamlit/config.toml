@@ -1,0 +1,33 @@
+[server]
+# Enable hot reload - automatically reload the app when files change
+runOnSave = true
+
+# Use the best available file watcher for your system
+fileWatcherType = "auto"
+
+# Disable CORS protection for local development
+enableCORS = false
+
+# Disable XSRF protection for local development (faster)
+enableXsrfProtection = false
+
+# Headless mode (set to false to open browser automatically)
+headless = false
+
+# Max upload size (increased for large markdown files)
+maxUploadSize = 200
+
+[browser]
+# Don't collect usage stats for faster startup
+gatherUsageStats = false
+
+# Automatically open browser on startup
+serverAddress = "localhost"
+
+[theme]
+# Use light theme for development (easier on the eyes during long sessions)
+base = "light"
+
+[logger]
+# Show detailed logs for debugging
+level = "info" 
