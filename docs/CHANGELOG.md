@@ -7,6 +7,22 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.2.2] - 2024-07-29
+
+### Fixed
+*   Resolved a critical rendering issue where semantic blocks (`:::`) displayed raw JavaScript (`mhchemParser.ts`) instead of their intended content. Diagnostic changes included simplifying the MathJax component URL in `src/app.py` and temporarily removing `--highlight-style=pygments` from Pandoc options in `src/pandoc_utils.py`.
+    *   **Note:** The exact root cause of the `mhchemParser.ts` injection is still under investigation, but these changes are expected to mitigate the symptom. Further refinement of MathJax/Pandoc extension interactions may be needed.
+*   Corrected a Pylint E0606 error (`possibly-used-before-assignment` for `content` variable) in `_process_ast_block` within `src/app.py` by ensuring `content` is initialized.
+
+### Improved
+*   Significantly improved application startup time by refactoring `_process_ast_block` in `src/app.py`. Implemented `_inlines_to_markdown`, a Python helper to directly convert AST for common block types (Headers, Paragraphs) to Markdown, reducing numerous Pandoc subprocess calls during initial document parsing. Complex block types still use Pandoc for content reconstruction.
+
+### Changed
+*   Pandoc options for HTML generation in `src/pandoc_utils.py` were iterated upon for diagnostics:
+    *   `--embed-resources` is now enabled (restored).
+    *   `--highlight-style=pygments` is currently disabled as part of diagnosing the semantic block issue. This may affect code block syntax highlighting.
+*   **Image Loading:** With `--embed-resources` re-enabled, local images should be embedded if files are present and accessible to Pandoc. Remote image embedding also relies on this.
+
 ## [0.2.1] - 2024-07-29
 
 ### Fixed

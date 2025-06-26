@@ -124,11 +124,11 @@ def convert_markdown_to_html(markdown_string):
     try:
         extra_args = [
             "--mathjax",  # Enables MathJax for LaTeX math
-            "--highlight-style=pygments",  # Enables syntax highlighting
-            # "--embed-resources", # Temporarily removed for testing semantic block issue
-            "--standalone",  # Keep for full HTML structure
-            "--metadata",  # Add title
-            "title=Pandoc Document",  # Default title
+            # "--highlight-style=pygments",  # Temporarily removed for testing
+            "--embed-resources",
+            "--standalone",
+            "--metadata",
+            "title=Pandoc Document",
             "--strip-comments",
         ]
         html_output = pypandoc.convert_text(

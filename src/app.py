@@ -83,6 +83,7 @@ def _process_ast_block(ast_block, pandoc_api_version):
     block_level = 0
     block_attrs = {}
     actual_block_id = block_id_str
+    content = ""  # Initialize content to ensure it's always defined
 
     if ast_block["t"] == "Header":
         level, header_attrs_tuple, inlines = (
@@ -103,6 +104,10 @@ def _process_ast_block(ast_block, pandoc_api_version):
         actual_block_id = (
             div_attrs_tuple[0] if div_attrs_tuple[0] else str(uuid.uuid4())
         )
+        # For Divs, content is typically a list of blocks.
+        # Reconstructing this accurately without Pandoc is complex if we want
+        # the *exact* Markdown for the Div's content.
+        # So, we still use Pandoc for Div content for now.
         content_ast_blocks = inner_blocks_ast
         block_kind = "semantic"
         block_attrs = {
@@ -110,18 +115,47 @@ def _process_ast_block(ast_block, pandoc_api_version):
             "classes": div_attrs_tuple[1],
             "keyvals": dict(div_attrs_tuple[2]),
         }
-    else:  # Default for Para, CodeBlock, etc.
-        actual_block_id = block_id_str if block_id_str else str(uuid.uuid4())
-        content_ast_blocks = [ast_block]
+        # Use Pandoc to reconstruct Markdown content for Divs
+        current_block_ast_for_content = {
+            "pandoc-api-version": pandoc_api_version,
+            "meta": {},
+            "blocks": content_ast_blocks,
+        }
+        content = pandoc_utils.convert_ast_json_to_markdown(
+            current_block_ast_for_content, is_full_ast=True
+        ).strip()
 
-    current_block_ast_for_content = {
-        "pandoc-api-version": pandoc_api_version,
-        "meta": {},
-        "blocks": content_ast_blocks,
-    }
-    content = pandoc_utils.convert_ast_json_to_markdown(
-        current_block_ast_for_content, is_full_ast=True
-    ).strip()
+    elif ast_block["t"] == "Para":
+        actual_block_id = block_id_str if block_id_str else str(uuid.uuid4())
+        content = _inlines_to_markdown(ast_block["c"])
+        block_kind = "paragraph"
+        # block_attrs remains empty, block_level remains 0
+
+    else:  # Default for CodeBlock, Plain, RawBlock, Table, Lists etc.
+        actual_block_id = block_id_str if block_id_str else str(uuid.uuid4())
+        # Fallback to Pandoc for these more complex or less common block types
+        content_ast_blocks = [ast_block]
+        # Determine kind more accurately if possible, or keep default 'paragraph'
+        # For example, ast_block["t"] could be "CodeBlock", "BulletList", etc.
+        # This part might need refinement if specific kinds are important here.
+        # For now, the content is the key.
+        current_block_ast_for_content = {
+            "pandoc-api-version": pandoc_api_version,
+            "meta": {},
+            "blocks": content_ast_blocks,
+        }
+        content = pandoc_utils.convert_ast_json_to_markdown(
+            current_block_ast_for_content, is_full_ast=True
+        ).strip()
+        # Try to infer kind from AST type if not 'paragraph'
+        simple_kind_map = {
+            "CodeBlock": "code",  # Example
+            "BlockQuote": "blockquote",
+            "BulletList": "ul",
+            "OrderedList": "ol",
+            "HorizontalRule": "hr",
+        }
+        block_kind = simple_kind_map.get(ast_block["t"], "paragraph")
 
     return {
         "block_id": actual_block_id,
@@ -130,6 +164,106 @@ def _process_ast_block(ast_block, pandoc_api_version):
         "content": content,
         "attributes": block_attrs,
     }
+
+
+# --- Helper for AST to Markdown reconstruction (for performance) ---
+def _inlines_to_markdown(inlines):
+    """
+    Converts a list of Pandoc inline AST elements to a Markdown string.
+    This is a simplified converter focusing on common elements to avoid
+    excessive Pandoc subprocess calls for simple content.
+    """
+    parts = []
+    for inline in inlines:
+        t = inline.get("t")
+        c = inline.get("c")
+        if t == "Str":
+            parts.append(c)
+        elif t == "Space":
+            parts.append(" ")
+        elif t == "SoftBreak":
+            parts.append("\n")  # Or " " depending on desired Markdown strictness
+        elif t == "LineBreak":
+            parts.append("\\\n")  # Or "  \n"
+        elif t == "Emph":
+            parts.append(f"*{_inlines_to_markdown(c)}*")
+        elif t == "Strong":
+            parts.append(f"**{_inlines_to_markdown(c)}**")
+        elif t == "Strikeout":
+            parts.append(f"~~{_inlines_to_markdown(c)}~~")
+        elif t == "Superscript":
+            parts.append(f"^{_inlines_to_markdown(c)}^")
+        elif t == "Subscript":
+            parts.append(f"~{_inlines_to_markdown(c)}~")
+        elif t == "SmallCaps":
+            # No standard Markdown, Pandoc uses <span style="font-variant:small-caps;">
+            # For simplicity, just output content. Or could be configurable.
+            parts.append(_inlines_to_markdown(c))
+        elif t == "Quoted":
+            quote_type = c[0].get("t")
+            content = _inlines_to_markdown(c[1])
+            if quote_type == "SingleQuote":
+                parts.append(f"'{content}'")
+            elif quote_type == "DoubleQuote":
+                parts.append(f'"{content}"')
+            else:  # Should not happen
+                parts.append(content)
+        elif t == "Code":
+            # c[0] is attributes, c[1] is the code string
+            attrs_str = (
+                ""  # Could reconstruct attributes if needed, e.g. for {#id .class}
+            )
+            parts.append(f"`{c[1]}`{attrs_str}")
+        elif t == "Math":
+            # c[0] is MathType (DisplayMath or InlineMath), c[1] is the math string
+            math_type = c[0].get("t")
+            math_content = c[1]
+            if math_type == "InlineMath":
+                parts.append(f"${math_content}$")
+            elif math_type == "DisplayMath":
+                parts.append(f"$$\n{math_content}\n$$")
+        elif t == "RawInline":
+            # c[0] is format (e.g., "html"), c[1] is the raw string
+            # This is tricky for Markdown output; often best to keep as is.
+            parts.append(c[1])
+        elif t == "Link":
+            # c[0] is attributes, c[1] is content (inlines), c[2] is [url, title]
+            link_content = _inlines_to_markdown(c[1])
+            url = c[2][0]
+            title = c[2][1]
+            title_str = f' "{title}"' if title else ""
+            parts.append(f"[{link_content}]({url}{title_str})")
+        elif t == "Image":
+            # c[0] is attributes, c[1] is alt text (inlines), c[2] is [url, title]
+            alt_text = _inlines_to_markdown(c[1])
+            url = c[2][0]
+            title = c[2][1]
+            title_str = f' "{title}"' if title else ""
+            parts.append(f"![{alt_text}]({url}{title_str})")
+        elif t == "Note":
+            # Pandoc extension: [^note_content].
+            # c[0] is a list of blocks (the footnote content)
+            # This is complex to reconstruct inline. Usually handled at block level.
+            # For simplicity here, might omit or use a placeholder.
+            # For now, let's indicate a note was here.
+            parts.append("[^note]")  # Placeholder
+        elif t == "Span":
+            # c[0] is attributes, c[1] is content (inlines)
+            # Pandoc extension: [content]{attrs}
+            # For simplicity, just output content. Could reconstruct with attrs.
+            parts.append(_inlines_to_markdown(c[1]))
+        # Add other inline types as needed: Cite, Underline etc.
+        else:
+            # Fallback for unknown types: try to get text if possible or skip
+            # This is a simplification. A robust converter would handle all types.
+            # For now, we are aiming for common cases.
+            # If 'c' is a list of inlines, recurse. If string, append.
+            if isinstance(c, list):
+                parts.append(_inlines_to_markdown(c))
+            elif isinstance(c, str):
+                parts.append(c)
+            # else: ignore for now
+    return "".join(parts)
 
 
 def handle_block_content_change(
