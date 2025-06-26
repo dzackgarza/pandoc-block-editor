@@ -1,13 +1,16 @@
-# pylint: disable=import-error (streamlit is a core dep for the app)
-import streamlit as st
-import uuid
+# pylint: disable=import-error
+# (streamlit is a core dep for the app, pylint might not find it in all CI envs)
+import json
 import os
 from io import StringIO
-import json
+import uuid
+
+import streamlit as st
 
 # First-party imports
 import pandoc_utils
 import ui_elements
+
 # import tempfile # Unused import W0611 - Removed
 
 
@@ -51,7 +54,8 @@ def parse_full_markdown_to_editor_blocks(full_markdown_string):
     Parses a full Markdown string into a list of EditorBlock dictionaries.
     R0914: Too many local variables (17/15) - This is borderline, structure is complex.
     R0912: Too many branches (17/12) - Due to AST node types.
-    Accepting these for now as breaking it down further might reduce clarity of AST processing.
+    Accepting these for now as breaking it down further might reduce clarity
+    of AST processing.
     """
     if not full_markdown_string:
         return [create_editor_block(content="")]
@@ -65,68 +69,72 @@ def parse_full_markdown_to_editor_blocks(full_markdown_string):
     pandoc_api_version = ast.get("pandoc-api-version", [1, 22])
 
     for ast_block in ast.get("blocks", []):
-        block_id_str = _extract_ast_block_attributes(ast_block)
-        content_ast_blocks = []
-        block_kind = "paragraph"  # Default kind
-        block_level = 0
-        block_attrs = {}
-        actual_block_id = block_id_str
+        block_data = _process_ast_block(ast_block, pandoc_api_version)
+        editor_blocks.append(create_editor_block(**block_data))
 
-        if ast_block["t"] == "Header":
-            level, header_attrs_tuple, inlines = (
-                ast_block["c"][0],
-                ast_block["c"][1],
-                ast_block["c"][2],
-            )
-            actual_block_id = (
-                header_attrs_tuple[0] if header_attrs_tuple[0] else str(uuid.uuid4())
-            )
-            content_ast_blocks = [{"t": "Plain", "c": inlines}]
-            block_kind = "heading"
-            block_level = level
-            block_attrs = dict(header_attrs_tuple[2])
-
-        elif ast_block["t"] == "Div":
-            div_attrs_tuple, inner_blocks_ast = ast_block["c"][0], ast_block["c"][1]
-            actual_block_id = (
-                div_attrs_tuple[0] if div_attrs_tuple[0] else str(uuid.uuid4())
-            )
-            content_ast_blocks = inner_blocks_ast
-            block_kind = "semantic"
-            block_attrs = {
-                "id": actual_block_id,  # Storing id also in attributes for Divs
-                "classes": div_attrs_tuple[1],
-                "keyvals": dict(div_attrs_tuple[2]),
-            }
-        else:  # Default for Para, CodeBlock, etc.
-            actual_block_id = block_id_str if block_id_str else str(uuid.uuid4())
-            content_ast_blocks = [ast_block]
-            # block_kind remains 'paragraph' or could be more specific if needed
-            # block_attrs remains empty {}
-
-        # Reconstruct markdown content for the current block
-        current_block_ast = {
-            "pandoc-api-version": pandoc_api_version,
-            "meta": {},
-            "blocks": content_ast_blocks,
-        }
-        content = pandoc_utils.convert_ast_json_to_markdown(
-            current_block_ast, is_full_ast=True
-        ).strip()
-
-        editor_blocks.append(
-            create_editor_block(
-                block_id=actual_block_id,  # Use block_id parameter name
-                kind=block_kind,
-                level=block_level,
-                content=content,
-                attributes=block_attrs,
-            )
-        )
     return editor_blocks if editor_blocks else [create_editor_block(content="")]
 
 
-def handle_block_content_change(block_id_arg, editor_key): # Renamed block_id to block_id_arg
+def _process_ast_block(ast_block, pandoc_api_version):
+    """Helper function to process a single AST block for parsing."""
+    block_id_str = _extract_ast_block_attributes(ast_block)
+    content_ast_blocks = []
+    block_kind = "paragraph"  # Default kind
+    block_level = 0
+    block_attrs = {}
+    actual_block_id = block_id_str
+
+    if ast_block["t"] == "Header":
+        level, header_attrs_tuple, inlines = (
+            ast_block["c"][0],
+            ast_block["c"][1],
+            ast_block["c"][2],
+        )
+        actual_block_id = (
+            header_attrs_tuple[0] if header_attrs_tuple[0] else str(uuid.uuid4())
+        )
+        content_ast_blocks = [{"t": "Plain", "c": inlines}]
+        block_kind = "heading"
+        block_level = level
+        block_attrs = dict(header_attrs_tuple[2])
+
+    elif ast_block["t"] == "Div":
+        div_attrs_tuple, inner_blocks_ast = ast_block["c"][0], ast_block["c"][1]
+        actual_block_id = (
+            div_attrs_tuple[0] if div_attrs_tuple[0] else str(uuid.uuid4())
+        )
+        content_ast_blocks = inner_blocks_ast
+        block_kind = "semantic"
+        block_attrs = {
+            "id": actual_block_id,
+            "classes": div_attrs_tuple[1],
+            "keyvals": dict(div_attrs_tuple[2]),
+        }
+    else:  # Default for Para, CodeBlock, etc.
+        actual_block_id = block_id_str if block_id_str else str(uuid.uuid4())
+        content_ast_blocks = [ast_block]
+
+    current_block_ast_for_content = {
+        "pandoc-api-version": pandoc_api_version,
+        "meta": {},
+        "blocks": content_ast_blocks,
+    }
+    content = pandoc_utils.convert_ast_json_to_markdown(
+        current_block_ast_for_content, is_full_ast=True
+    ).strip()
+
+    return {
+        "block_id": actual_block_id,
+        "kind": block_kind,
+        "level": block_level,
+        "content": content,
+        "attributes": block_attrs,
+    }
+
+
+def handle_block_content_change(
+    block_id_arg, editor_key
+):  # Renamed block_id to block_id_arg
     """Handles changes in a block's content editor."""
     new_content = st.session_state[editor_key]
     for block in st.session_state.documentEditorBlocks:
@@ -197,14 +205,26 @@ def initialize_session_state():
             torture_test_path = os.path.join(
                 project_root, "test_fixtures", torture_test_filename
             )
+            print(
+                "DEBUG: Torture test path in initialize_session_state: "
+                f"{torture_test_path}"
+            )  # DEBUG PRINT
+            file_exists = os.path.exists(torture_test_path)
+            print(f"DEBUG: Torture test file exists: {file_exists}")  # DEBUG PRINT
 
-            if os.path.exists(torture_test_path):
+            if file_exists:
                 with open(torture_test_path, "r", encoding="utf-8") as f:
                     st.session_state.initial_markdown_content = f.read()
+                    print(
+                        "DEBUG: Successfully read torture_test_document.md"
+                    )  # DEBUG PRINT
             else:
+                print(
+                    f"DEBUG: Torture test file NOT FOUND at {torture_test_path}"
+                )  # DEBUG PRINT
                 error_message = (
                     f"# Welcome\n\nCould not find `{torture_test_filename}`. "
-                    f"Starting with a default document.\n\n"
+                    "Starting with a default document.\n\n"
                     f"{st.session_state.default_markdown_content}"
                 )
                 st.session_state.initial_markdown_content = error_message
@@ -219,6 +239,124 @@ def initialize_session_state():
 
 
 initialize_session_state()
+
+
+def _render_editor_pane():
+    """Renders the editor pane with text areas for each block."""
+    for i, block in enumerate(st.session_state.documentEditorBlocks):
+        block_id_display_html = (
+            f"<div class='block-id-display editor-block-id'>"
+            f"Editor ID: `{block['id']}`</div>"
+        )
+        st.markdown(block_id_display_html, unsafe_allow_html=True)
+        editor_key = f"editor_{block['id']}_{i}"
+        st.text_area(
+            label=f"Block Content {i+1} ({block['kind']})",
+            value=block["content"],
+            key=editor_key,
+            on_change=handle_block_content_change,
+            args=(block["id"], editor_key),
+            height=max(150, int(len(block["content"]) / 1.5)),
+        )
+        st.markdown("---")
+
+
+def _render_preview_pane():
+    """Renders the preview pane with HTML conversion for each block."""
+    for i, block in enumerate(st.session_state.documentEditorBlocks):
+        viewer_id_display_html = (
+            f"<div class='block-id-display viewer-block-id'>"
+            f"Viewer ID: `{block['id']}`</div>"
+        )
+        st.markdown(viewer_id_display_html, unsafe_allow_html=True)
+        preview_div_id = f"preview-block-{block['id']}-{i}"
+        try:
+            html_content = pandoc_utils.convert_markdown_to_html(block["content"])
+            preview_wrapper_html = (
+                f"<div id='{preview_div_id}' "
+                f"class='block-preview-wrapper'>{html_content}</div>"
+            )
+            st.markdown(preview_wrapper_html, unsafe_allow_html=True)
+
+            js_typeset_script = f"""<script>
+            setTimeout(function() {{
+                if (typeof window.typesetMathJaxForElement === 'function') {{
+                    window.typesetMathJaxForElement('{preview_div_id}');
+                }} else {{
+                    let attempts = 0;
+                    const maxAttempts = 5;
+                    const interval = 100;
+                    function retryTypeset() {{
+                        if (typeof window.typesetMathJaxForElement === 'function') {{
+                            window.typesetMathJaxForElement('{preview_div_id}');
+                        }} else if (attempts < maxAttempts) {{
+                            attempts++;
+                            setTimeout(retryTypeset, interval);
+                        }} else {{
+                            console.error(
+                                'window.typesetMathJaxForElement not found for ' +
+                                '{preview_div_id}'
+                            );
+                        }}
+                    }}
+                    retryTypeset();
+                }}
+            }}, 50);</script>"""
+            st.components.v1.html(js_typeset_script, height=0)
+        except RuntimeError as e:  # Pandoc conversion error
+            st.error(f"Error rendering block {block['id']}:\n{e}")
+        except Exception as e:  # pylint: disable=broad-except
+            st.error(f"Unexpected error rendering block {block['id']}:\n{e}")
+        st.markdown("---")
+
+
+def _render_sidebar_menu():
+    """Renders the sidebar menu."""
+    with st.sidebar:
+        st.title("📋 Pandoc Editor Menu")
+        st.markdown("---")
+
+        # File Menu
+        st.subheader("📄 File")
+        uploaded_file = st.file_uploader(
+            "Open Document", type=["md", "markdown"], key="sidebar_file_uploader"
+        )
+        if uploaded_file is not None:
+            stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
+            st.session_state.documentEditorBlocks = (
+                parse_full_markdown_to_editor_blocks(stringio.read())
+            )
+            st.session_state.sidebar_file_uploader = None  # Clear uploader
+            st.rerun()
+
+        full_doc_md_for_download = reconstruct_markdown_from_editor_blocks()
+        st.download_button(
+            label="Save Document",
+            data=full_doc_md_for_download,
+            file_name="document.md",
+            mime="text/markdown",
+            key="sidebar_download_button",
+        )
+        st.markdown("---")
+
+        # Edit Menu
+        st.subheader("✏️ Edit")
+        if st.button("➕ Add New Block", key="sidebar_add_block_button"):
+            st.session_state.documentEditorBlocks.append(
+                create_editor_block(content="# New Block\n\nStart writing here...")
+            )
+            st.rerun()
+        st.markdown("---")
+
+        # View Menu
+        st.subheader("👁️ View")
+        if "show_debug_modal" not in st.session_state:  # Initialize if not present
+            st.session_state.show_debug_modal = False
+
+        if st.button("Toggle Debug Info", key="sidebar_toggle_debug_button"):
+            st.session_state.show_debug_modal = not st.session_state.show_debug_modal
+            st.rerun()  # Rerun to update modal visibility
+
 
 # --- Main Application ---
 # R0915: Too many statements (80/50) - main() is long due to UI setup.
@@ -263,10 +401,9 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
     )
 
     # MathJax Setup
-    # Line lengths adjusted
-    st.markdown(
-        """<script id="MathJax-script" async
-        src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    mathjax_script_html = """
+        <script id="MathJax-script" async
+                src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
         <script>
         window.MathJax = {
           tex: {
@@ -286,67 +423,52 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
                 const element = document.getElementById(elementId);
                 if (element) {
                     window.MathJax.typesetPromise([element]).catch(
-                        (err) => console.error('MathJax error for ' + elementId + ':', err)
+                        (err) => console.error(
+                            'MathJax error for ' + elementId + ':', err
+                        )
                     );
-                } else { console.warn('MathJax typeset: Element not found: ' + elementId); }
-            } else { console.warn('MathJax not ready for element: ' + elementId); }
+                } else {
+                    console.warn('MathJax typeset: Element not found: ' + elementId);
+                }
+            } else {
+                console.warn('MathJax not ready for element: ' + elementId);
+            }
         };
-        </script>""",
-        unsafe_allow_html=True,
-    )
+        </script>
+    """
+    st.components.v1.html(mathjax_script_html, height=0)
 
     # --- Sidebar (Menubar) ---
-    with st.sidebar:
-        st.title("Menu")
-        st.markdown("---")
-
-        # File Menu
-        st.subheader("File")
-        uploaded_file = st.file_uploader(
-            "Open Document", type=["md", "markdown"], key="sidebar_file_uploader"
-        )
-        if uploaded_file is not None:
-            stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
-            st.session_state.documentEditorBlocks = (
-                parse_full_markdown_to_editor_blocks(stringio.read())
-            )
-            st.session_state.sidebar_file_uploader = None  # Clear uploader
-            st.rerun()
-
-        full_doc_md_for_download = reconstruct_markdown_from_editor_blocks()
-        st.download_button(
-            label="Save Document",
-            data=full_doc_md_for_download,
-            file_name="document.md",
-            mime="text/markdown",
-            key="sidebar_download_button",
-        )
-
-        if st.button("Exit (Simulated)", key="sidebar_exit_button"):
-            st.session_state.exit_message = (
-                "Application 'exit' simulated. You can close the browser tab."
-            )
-
-        st.markdown("---")
-
-        # Edit Menu
-        st.subheader("Edit")
-        if st.button("Add Block", key="sidebar_add_block_button"):
-            st.session_state.documentEditorBlocks.append(
-                create_editor_block(content="")
-            )
-            st.rerun()
-
-        st.markdown("---")
-
-        # Debug View Toggle
-        st.subheader("View")
-        show_debug = st.toggle(
-            "Show Debug Info", key="sidebar_debug_toggle", value=False
-        )
+    _render_sidebar_menu()
 
     # --- Main Content Area ---
     st.title("Pandoc Block Editor")
+
+    # Add the FAB and its hidden trigger button
+    # The key for the hidden button must match the one used in ui_elements.render_floating_add_button()
+    hidden_add_block_key = "hidden_add_block_trigger_button"
+    if st.button(
+        "Add Block (Hidden Trigger)",
+        key=hidden_add_block_key,
+        help="This is hidden and triggered by FAB",
+        type="primary",
+        # Use some CSS to truly hide it if Streamlit's default button is still visible
+        # However, st.button doesn't have a direct visibility param.
+        # A common trick is to put it in an empty container that's not rendered,
+        # or use st.columns to make it very small / out of sight.
+        # For now, let's assume the FAB's JS can click it even if technically in DOM.
+        # A cleaner way is to use st.session_state flags if JS can set them.
+        # Given the current FAB JS, it expects a clickable button.
+        # We can wrap it in a div and hide the div with CSS.
+    ):
+        st.session_state.documentEditorBlocks.append(create_editor_block(content=""))
+        st.rerun()
+
+    # Render the FAB - this should be done after the hidden button it triggers
+    # so the button exists in the DOM when the FAB's JS might run.
+    st.components.v1.html(
+        ui_elements.render_floating_add_button(), height=100
+    )  # Increased height
 
     if st.session_state.get("missing_torture_file", False):
         st.warning(
@@ -396,102 +518,28 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
     editor_pane, preview_pane = st.columns(2)
 
     with editor_pane:
-        for i, block in enumerate(st.session_state.documentEditorBlocks):
-            block_id_display_html = (
-                f"<div class='block-id-display editor-block-id'>"
-                f"Editor ID: `{block['id']}`</div>"
-            )
-            st.markdown(block_id_display_html, unsafe_allow_html=True)
-            editor_key = f"editor_{block['id']}_{i}"
-            st.text_area(
-                label=f"Block Content {i+1} ({block['kind']})",
-                value=block["content"],
-                key=editor_key,
-                on_change=handle_block_content_change,
-                args=(block["id"], editor_key),
-                height=max(150, int(len(block["content"]) / 1.5)),
-            )
-            st.markdown("---")
+        _render_editor_pane()
 
     with preview_pane:
-        for i, block in enumerate(st.session_state.documentEditorBlocks):
-            viewer_id_display_html = (
-                f"<div class='block-id-display viewer-block-id'>"
-                f"Viewer ID: `{block['id']}`</div>"
-            )
-            st.markdown(viewer_id_display_html, unsafe_allow_html=True)
-            preview_div_id = f"preview-block-{block['id']}-{i}"
-            try:
-                html_content = pandoc_utils.convert_markdown_to_html(block["content"])
-                preview_wrapper_html = (
-                    f"<div id='{preview_div_id}' "
-                    f"class='block-preview-wrapper'>{html_content}</div>"
-                )
-                st.markdown(preview_wrapper_html, unsafe_allow_html=True)
+        _render_preview_pane()
 
-                # Script for MathJax typesetting, line lengths adjusted
-                js_typeset_script = f"""<script>
-                setTimeout(function() {{
-                    if (typeof window.typesetMathJaxForElement === 'function') {{
-                        window.typesetMathJaxForElement('{preview_div_id}');
-                    }} else {{
-                        let attempts = 0; const maxAttempts = 5; const interval = 100;
-                        function retryTypeset() {{
-                            if (typeof window.typesetMathJaxForElement === 'function') {{
-                                window.typesetMathJaxForElement('{preview_div_id}');
-                            }} else if (attempts < maxAttempts) {{
-                                attempts++; setTimeout(retryTypeset, interval);
-                            }} else {{
-                                console.error(
-                                    'window.typesetMathJaxForElement not found for {preview_div_id}'
-                                );
-                            }}
-                        }}
-                        retryTypeset();
-                    }}
-                }}, 50);</script>"""
-                st.components.v1.html(js_typeset_script, height=0)
-            except RuntimeError as e:  # Pandoc conversion error
-                st.error(f"Error rendering block {block['id']}:\n{e}")
-            except Exception as e:  # pylint: disable=broad-except
-                # Catching broad except for unexpected errors during preview rendering
-                st.error(f"Unexpected error rendering block {block['id']}:\n{e}")
-            st.markdown("---")
+    # Debug Modal - Rendered based on session state.
+    debug_data_str = json.dumps(
+        st.session_state.documentEditorBlocks, indent=2, ensure_ascii=False
+    )
+    # Ensure show_debug_modal is initialized (already done in sidebar logic, but good for safety)
+    if "show_debug_modal" not in st.session_state:
+        st.session_state.show_debug_modal = False
 
-    # Debug Modal
-    if show_debug:
-        debug_data_str = json.dumps(
-            st.session_state.documentEditorBlocks, indent=2, ensure_ascii=False
-        )
-        st.components.v1.html(ui_elements.render_debug_modal(debug_data_str), height=0)
-        # Script for auto-toggling debug modal, line lengths adjusted
-        st.markdown(
-            """<script>
-            const btn = document.getElementById('debug-modal-toggle-btn');
-            if (btn && !window.debugModalAutoClicked) {
-                const overlay = document.getElementById('debug-modal-overlay-container');
-                if (overlay && overlay.style.display === 'none') {
-                    if(typeof window.showDebugModal === 'function') {
-                        window.showDebugModal();
-                    }
-                }
-                window.debugModalAutoClicked = true;
-            } else if (!btn && window.debugModalAutoClicked) {
-                delete window.debugModalAutoClicked;
-            }
-            </script>""",
-            unsafe_allow_html=True,
-        )
-    else:
-        # Ensure flag is reset and modal is hidden if toggle is off
-        st.markdown(
-            "<script>if (window.debugModalAutoClicked) { "
-            "delete window.debugModalAutoClicked; } "
-            "if(typeof window.hideDebugModal === 'function' && "
-            "document.getElementById('debug-modal-overlay-container')) { "
-            "window.hideDebugModal(); }</script>",
-            unsafe_allow_html=True,
-        )
+    # The height of the component can be minimal as the modal is fixed position.
+    # The component itself doesn't take up space in the normal document flow.
+    st.components.v1.html(
+        ui_elements.render_debug_modal(
+            debug_data_json_string=debug_data_str,
+            initial_visible=st.session_state.show_debug_modal,
+        ),
+        height=0,  # Modal is fixed, doesn't need layout space.
+    )
 
 
 if __name__ == "__main__":

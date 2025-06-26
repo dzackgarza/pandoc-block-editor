@@ -173,9 +173,7 @@ if __name__ == "__main__":
     html_result = convert_markdown_to_html(MD_TEXT_SIMPLE)
     print(html_result)
 
-    MD_TEXT_MATH = (
-        "Equation: $E = mc^2$\n\n$$\\sum_{i=0}^n i = \\frac{n(n+1)}{2}$$"
-    )
+    MD_TEXT_MATH = "Equation: $E = mc^2$\n\n$$\\sum_{i=0}^n i = \\frac{n(n+1)}{2}$$"
     print("\n--- Math Markdown to HTML ---")
     html_math_result = convert_markdown_to_html(MD_TEXT_MATH)
     print(html_math_result)

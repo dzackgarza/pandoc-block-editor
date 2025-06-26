@@ -1,11 +1,12 @@
-# pylint: disable=import-error (psutil, pytest are dev dependencies)
-# pylint: disable=redefined-outer-name (pytest fixtures)
+# pylint: disable=import-error,redefined-outer-name
+# (psutil, pytest are dev dependencies; pytest fixtures)
 import subprocess
 import time
+import os  # Added for path operations
 import psutil
 import pytest
 
-STREAMLIT_APP_PATH = "main.py"
+STREAMLIT_APP_PATH = "src/app.py"  # Changed from main.py
 STREAMLIT_PORT = "8501"
 BASE_URL = f"http://localhost:{STREAMLIT_PORT}"
 
@@ -15,8 +16,17 @@ def streamlit_server():
     """
     pytest fixture to start and stop the Streamlit server for E2E tests.
     """
+    # Construct an absolute path to the streamlit executable
+    # within the virtual environment.
+    # conftest.py is in tests/e2e/, so project_root is three levels up.
+    current_dir = os.path.dirname(os.path.abspath(__file__))  # .../tests/e2e
+    tests_dir = os.path.dirname(current_dir)  # .../tests
+    project_root = os.path.dirname(tests_dir)  # .../ (project root)
+
+    streamlit_executable = os.path.join(project_root, ".venv", "bin", "streamlit")
+
     command = [
-        "streamlit",
+        streamlit_executable,
         "run",
         STREAMLIT_APP_PATH,
         "--server.port",
@@ -32,7 +42,8 @@ def streamlit_server():
     ) as process:
         print(f"Streamlit server starting with PID: {process.pid}...")
         # Wait for the server to start
-        time.sleep(5)  # Simple delay; consider more robust checks for production
+        print("Waiting 10 seconds for Streamlit server to initialize fully...")
+        time.sleep(10)  # Increased delay
 
         if process.poll() is not None:
             # Process terminated prematurely
