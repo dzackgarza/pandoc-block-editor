@@ -137,9 +137,7 @@ def test_loads_torture_test_document_by_default(page: Page):
     expect(editor_for_para).to_be_visible()
 
     # Check for python code block content in an editor textarea
-    editor_code_selector = (
-        f"textarea:has-text('{TORTURE_TEST_PYTHON_CODE_SUBSTRING}')"
-    )
+    editor_code_selector = f"textarea:has-text('{TORTURE_TEST_PYTHON_CODE_SUBSTRING}')"
     editor_for_code = page.locator(editor_code_selector).first
     expect(editor_for_code).to_be_visible()
 
@@ -178,10 +176,10 @@ def test_renders_torture_test_document_in_preview(page: Page):
     # Check for rendered Python code block
     # (Pandoc uses <pre><code class="language-python">...</code></pre>)
     # We look for the specific class added by Pandoc's highlighting.
-    code_block_class = EXPECTED_CODE_BLOCK_PYTHON_CLASS.split('.')[1]
+    code_block_class = EXPECTED_CODE_BLOCK_PYTHON_CLASS.split(".")[1]
     code_block_selector = (
-        f"div.block-preview-wrapper pre.{code_block_class}"
-    ) # pre.sourceCode.python
+        f"div.block-preview-wrapper pre.{code_block_class}"  # pre.sourceCode.python
+    )
     preview_code_block = page.locator(code_block_selector).first
     expect(preview_code_block).to_be_visible()
     expect(preview_code_block).to_contain_text(TORTURE_TEST_PYTHON_CODE_SUBSTRING)

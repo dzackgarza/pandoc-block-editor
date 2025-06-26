@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning.
 
+## [Unreleased]
+
+## [0.2.1] - 2024-07-29
+
+### Fixed
+*   Addressed Pandoc command-line warnings in `src/pandoc_utils.py`:
+    *   Replaced deprecated `--self-contained` with `--embed-resources --standalone`.
+    *   Added a default HTML title (`--metadata title="Pandoc Document"`) to HTML generation.
+*   Applied a diagnostic fix for semantic block (`:::`) rendering issues:
+    *   Temporarily removed `--embed-resources` from Pandoc HTML conversion options in `src/pandoc_utils.py`. This is expected to prevent incorrect embedding of JavaScript source (e.g., `mhchemParser.ts`) and allow semantic block content to render correctly. Further work on resource handling may be needed.
+
+### Changed
+*   Updated image links in `test_fixtures/torture_test_document.md`:
+    *   Corrected remote image URL to a working placeholder.
+    *   Added a local image reference for future testing.
+*   **Note on Image Loading:** Local image loading is likely affected by the temporary removal of `--embed-resources` and will require a robust solution (e.g., Streamlit static file serving or resolving resource embedding).
+
+### Investigated
+*   **Startup Time:** Analyzed application startup performance. Identified that the initial parsing logic (`parse_full_markdown_to_editor_blocks` in `src/app.py`) makes numerous per-block Pandoc calls, which is the primary bottleneck for "massive startup time". No optimization implemented in this version due to complexity.
+*   **polyfill.io Warning:** Noted the Pandoc warning about failing to fetch `polyfill.io` as an external issue.
+
 ## [0.2.0] - 2024-07-29
 
 ### Added

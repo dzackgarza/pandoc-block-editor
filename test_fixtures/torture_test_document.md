@@ -1,7 +1,9 @@
 # Heading 1 {#h1-id .h1-class key="value"}
 
 This is a paragraph under H1. It contains some *italic* and **bold** text.
-It also includes a [link to AIDE](https://aide.aide.com). And an image: ![Aide Logo](https://aide.aide.com/logo.png)
+It also includes a [link to AIDE](https://aide.aide.com).
+And a remote image: ![Placeholder Remote Image](https://via.placeholder.com/150/0000FF/FFFFFF?Text=Remote+Image)
+And a local image: ![Placeholder Local Image](images/local_test_image.png) <!-- Assuming images/ is relative to this file or project root for Pandoc -->
 
 ## Heading 2 with `code` {#h2-id}
 
