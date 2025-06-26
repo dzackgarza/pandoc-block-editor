@@ -7,6 +7,39 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+### Added
+*   Created `test_fixtures/torture_test_document.md` with a comprehensive set of Markdown elements to drive development and testing.
+*   Implemented initial Markdown parsing using `pypandoc` to convert full documents into an AST, then segmenting the AST into `EditorBlock` structures. Each block's Markdown content is reconstructed from its specific AST elements. (in `src/app.py` and `src/pandoc_utils.py`)
+*   Implemented initial Markdown-to-HTML rendering for individual blocks using `pypandoc`, including support for MathJax and Pygments syntax highlighting. (in `src/pandoc_utils.py` and used by `src/app.py`)
+*   Added basic unit tests for `pandoc_utils.py` covering AST parsing, AST-to-Markdown conversion, and Markdown-to-HTML conversion.
+*   Added unit tests for `app.py` helper functions (`create_editor_block`, `parse_full_markdown_to_editor_blocks`, `reconstruct_markdown_from_editor_blocks`).
+*   Updated E2E tests (`tests/e2e/test_main_app.py`) to verify:
+    *   Loading of the `torture_test_document.md` by default.
+    *   Presence of content from the torture test document in editor and preview panes.
+    *   Functionality of the new sidebar UI for adding blocks.
+    *   Basic MathJax and code syntax highlighting rendering in previews.
+
+### Changed
+*   **UI Refactoring (`src/app.py`, `src/ui_elements.py`):**
+    *   Replaced hidden buttons and custom JavaScript-driven file menu with a Streamlit sidebar-based menu for "File" (Open, Save, Exit simulation) and "Edit" (Add Block) operations.
+    *   Integrated the debug view toggle into the sidebar.
+    *   Removed old custom HTML/JS components for file menu and floating add button from `src/ui_elements.py`.
+*   **Core Logic (`src/pandoc_utils.py`):**
+    *   Replaced placeholder functions with `pypandoc`-based implementations for:
+        *   `parse_markdown_to_ast_json`
+        *   `convert_ast_json_to_markdown`
+        *   `convert_markdown_to_html` (with MathJax and Pygments options)
+*   **Application Startup (`src/app.py`):**
+    *   Now loads `test_fixtures/torture_test_document.md` by default.
+    *   Uses the implemented Pandoc utilities to parse the document into blocks and render previews.
+*   **Styling and Quality:**
+    *   Applied `black` formatting to all Python files.
+    *   Addressed Pylint warnings across the codebase (line lengths, imports, unused variables, etc.).
+    *   Added `pylint` to `requirements.txt`.
+
+### Fixed
+*   Ensured `pylint` is installed as a dev dependency and run as part of quality checks.
+
 ## [0.2.0] - 2024-07-26
 
 ### Changed

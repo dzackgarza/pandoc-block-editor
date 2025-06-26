@@ -22,12 +22,18 @@ def main():
         # Using subprocess.run to have a bit more control and capture output if needed.
         # Streamlit typically runs until manually stopped.
         # The `streamlit run` command will take over the terminal.
-        process = subprocess.run(["streamlit", "run", app_path], check=True)
+        # W0612: Unused variable 'process'. If result isn't used, can call directly.
+        # However, retaining it for now in case future use for process.returncode etc.
+        # is desired, or for clarity that a process is being managed.
+        # For now, to silence pylint, we can assign to _.
+        _ = subprocess.run(["streamlit", "run", app_path], check=True)
     except FileNotFoundError:
-        print(
-            "Error: 'streamlit' command not found. Please ensure Streamlit is installed and in your PATH.",
-            file=sys.stderr,
+        # C0301: Line too long fixed by breaking the string.
+        error_message = (
+            "Error: 'streamlit' command not found. "
+            "Please ensure Streamlit is installed and in your PATH."
         )
+        print(error_message, file=sys.stderr)
         sys.exit(1)
     except subprocess.CalledProcessError as e:
         print(f"Error running Streamlit app: {e}", file=sys.stderr)
