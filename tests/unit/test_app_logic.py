@@ -4,7 +4,8 @@ import uuid
 from unittest.mock import MagicMock, patch
 import pytest
 
-# Try to import pypandoc for the skip logic, otherwise assume it's available if tests run
+# Try to import pypandoc for the skip logic,
+# otherwise assume it's available if tests run
 try:
     import pypandoc
 except ImportError:
@@ -184,9 +185,7 @@ def mock_st_session_state(monkeypatch):
 
 def test_reconstruct_markdown_with_mocking(mock_st_session_state):
     """Test reconstruct_markdown_from_editor_blocks using a mocked session state."""
-    mock_st_session_state.documentEditorBlocks = (
-        SAMPLE_EDITOR_BLOCKS_FOR_RECONSTRUCTION
-    )
+    mock_st_session_state.documentEditorBlocks = SAMPLE_EDITOR_BLOCKS_FOR_RECONSTRUCTION
 
     reconstructed_md = reconstruct_markdown_from_editor_blocks()
 

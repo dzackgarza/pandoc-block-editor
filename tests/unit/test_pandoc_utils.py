@@ -1,11 +1,15 @@
-# pylint: disable=import-error (pytest is a dev dependency)
-import pytest
-# import json # Unused W0611 - Removed
+# pylint: disable=import-error
+# (pytest is a dev dependency)
 from unittest.mock import patch
+
+import pytest
+
+# import json # Unused W0611 - Removed
 
 from src import pandoc_utils
 
-# Try to import pypandoc for the skip logic, otherwise assume it's available if tests run
+# Try to import pypandoc for the skip logic,
+# otherwise assume it's available if tests run
 try:
     import pypandoc
 except ImportError:
@@ -158,8 +162,7 @@ def test_parse_then_convert_div():
     md_from_ast = pandoc_utils.convert_ast_json_to_markdown(ast, is_full_ast=True)
     # Order of attributes can vary
     assert (
-        "::: {#mydiv .myclass}" in md_from_ast
-        or "::: {.myclass #mydiv}" in md_from_ast
+        "::: {#mydiv .myclass}" in md_from_ast or "::: {.myclass #mydiv}" in md_from_ast
     )
     assert "This is content inside a div." in md_from_ast
     assert "* list item" in md_from_ast
