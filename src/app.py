@@ -3,6 +3,7 @@
 import json
 import os
 from io import StringIO
+import time  # Added for performance logging
 import uuid
 
 import streamlit as st
@@ -57,28 +58,68 @@ def parse_full_markdown_to_editor_blocks(full_markdown_string):
     Accepting these for now as breaking it down further might reduce clarity
     of AST processing.
     """
+    func_start_time = time.time()
+    print(
+        f"[PERF_LOG] parse_full_markdown_to_editor_blocks: Start (input len: {len(full_markdown_string)})"
+    )
+
     if not full_markdown_string:
+        print(
+            f"[PERF_LOG] parse_full_markdown_to_editor_blocks: Finished (empty input) in {time.time() - func_start_time:.4f}s"
+        )
         return [create_editor_block(content="")]
+
+    ast_call_start_time = time.time()
     try:
         ast = pandoc_utils.parse_markdown_to_ast_json(full_markdown_string)
+        ast_call_duration = time.time() - ast_call_start_time
+        print(
+            f"[PERF_LOG] parse_full_markdown_to_editor_blocks: Got full AST from Pandoc in {ast_call_duration:.4f}s"
+        )
     except RuntimeError as e:
         st.error(f"Failed to parse Markdown AST: {e}")
+        ast_call_duration = time.time() - ast_call_start_time
+        print(
+            f"[PERF_LOG] parse_full_markdown_to_editor_blocks: Pandoc AST call ERRORED in {ast_call_duration:.4f}s"
+        )
         return [create_editor_block(content=full_markdown_string, kind="paragraph")]
 
     editor_blocks = []
     pandoc_api_version = ast.get("pandoc-api-version", [1, 22])
 
-    for ast_block in ast.get("blocks", []):
+    print(
+        f"[PERF_LOG] parse_full_markdown_to_editor_blocks: Starting block processing loop for {len(ast.get('blocks', []))} blocks."
+    )
+    total_block_processing_time = 0
+
+    for i, ast_block in enumerate(ast.get("blocks", [])):
+        block_process_start_time = time.time()
         block_data = _process_ast_block(ast_block, pandoc_api_version)
         editor_blocks.append(create_editor_block(**block_data))
+        block_process_duration = time.time() - block_process_start_time
+        total_block_processing_time += block_process_duration
+        # Limit logging for many blocks, e.g., log every 10th block or if slow
+        if i < 5 or i % 10 == 0 or block_process_duration > 0.1:
+            print(
+                f"[PERF_LOG] parse_full_markdown_to_editor_blocks: Processed block {i} (type: {ast_block.get('t', 'Unknown')}) in {block_process_duration:.4f}s"
+            )
 
+    print(
+        f"[PERF_LOG] parse_full_markdown_to_editor_blocks: Finished block processing loop. Total block processing time: {total_block_processing_time:.4f}s"
+    )
+    print(
+        f"[PERF_LOG] parse_full_markdown_to_editor_blocks: Finished in {time.time() - func_start_time:.4f}s"
+    )
     return editor_blocks if editor_blocks else [create_editor_block(content="")]
 
 
+    """Helper function to process a single AST block for parsing."""
 def _process_ast_block(ast_block, pandoc_api_version):
     """Helper function to process a single AST block for parsing."""
+    # Unused variables for optional logging are now removed.
+
     block_id_str = _extract_ast_block_attributes(ast_block)
-    content_ast_blocks = []
+    # content_ast_blocks = [] # Not needed universally, defined in branches
     block_kind = "paragraph"  # Default kind
     block_level = 0
     block_attrs = {}
@@ -174,6 +215,15 @@ def _process_ast_block(ast_block, pandoc_api_version):
             "HorizontalRule": "hr",
         }
         block_kind = simple_kind_map.get(ast_block["t"], "paragraph")
+        # pandoc_call_needed = True # This was for the commented-out log line
+
+    # Optional: More verbose logging for _process_ast_block itself.
+    # The primary per-block timing is now in parse_full_markdown_to_editor_blocks.
+    # This log can be enabled if detailed tracing of Python vs Pandoc path per block is needed.
+    # block_type_for_log = ast_block.get('t', 'Unknown')
+    # pandoc_marker_str = "(Pandoc)" if pandoc_call_needed else "(Python)" # Renamed for clarity
+    # func_duration = time.time() - func_start_time
+    # print(f"[PERF_LOG] _process_ast_block: Finished (type: {block_type_for_log} {pandoc_marker_str}) in {func_duration:.4f}s")
 
     return {
         "block_id": actual_block_id,
@@ -344,6 +394,9 @@ def reconstruct_markdown_from_editor_blocks():
 # --- Streamlit Session State Initialization ---
 def initialize_session_state():
     """Initializes Streamlit session state variables."""
+    func_start_time = time.time()
+    print("[PERF_LOG] initialize_session_state: Start")
+
     if "documentEditorBlocks" not in st.session_state:
         st.session_state.documentEditorBlocks = [create_editor_block(content="")]
         st.session_state.initial_load_processed = False
@@ -357,23 +410,29 @@ def initialize_session_state():
             torture_test_path = os.path.join(
                 project_root, "test_fixtures", torture_test_filename
             )
-            print(
-                "DEBUG: Torture test path in initialize_session_state: "
-                f"{torture_test_path}"
-            )  # DEBUG PRINT
+            # print(
+            #     "DEBUG: Torture test path in initialize_session_state: "
+            #     f"{torture_test_path}"
+            # ) # DEBUG PRINT
+
+            read_start_time = time.time()
             file_exists = os.path.exists(torture_test_path)
-            print(f"DEBUG: Torture test file exists: {file_exists}")  # DEBUG PRINT
+            # print(f"DEBUG: Torture test file exists: {file_exists}") # DEBUG PRINT
 
             if file_exists:
                 with open(torture_test_path, "r", encoding="utf-8") as f:
                     st.session_state.initial_markdown_content = f.read()
-                    print(
-                        "DEBUG: Successfully read torture_test_document.md"
-                    )  # DEBUG PRINT
-            else:
+                read_duration = time.time() - read_start_time
                 print(
-                    f"DEBUG: Torture test file NOT FOUND at {torture_test_path}"
-                )  # DEBUG PRINT
+                    f"[PERF_LOG] initialize_session_state: Read torture_test_document.md in {read_duration:.4f}s"
+                )
+                # print(
+                #     "DEBUG: Successfully read torture_test_document.md"
+                # )  # DEBUG PRINT
+            else:
+                # print(
+                #     f"DEBUG: Torture test file NOT FOUND at {torture_test_path}"
+                # )  # DEBUG PRINT
                 error_message = (
                     f"# Welcome\n\nCould not find `{torture_test_filename}`. "
                     "Starting with a default document.\n\n"
@@ -385,9 +444,12 @@ def initialize_session_state():
             st.error(f"Error loading initial document: {e}")
             st.session_state.initial_markdown_content = (
                 f"# Error\n\nError loading initial document. "
-                f"Starting with a default document.\n\n"
+                "Starting with a default document.\n\n"
                 f"{st.session_state.default_markdown_content}"
             )
+
+    func_duration = time.time() - func_start_time
+    print(f"[PERF_LOG] initialize_session_state: Finished in {func_duration:.4f}s")
 
 
 initialize_session_state()
@@ -423,7 +485,17 @@ def _render_preview_pane():
         st.markdown(viewer_id_display_html, unsafe_allow_html=True)
         preview_div_id = f"preview-block-{block['id']}-{i}"
         try:
+            html_conv_start_time = time.time()
             html_content = pandoc_utils.convert_markdown_to_html(block["content"])
+            html_conv_duration = time.time() - html_conv_start_time
+            # Log if conversion is slow, or for first few blocks
+            if (
+                i < 3 or html_conv_duration > 0.05
+            ):  # Log first 3 blocks or any slow ones
+                print(
+                    f"[PERF_LOG] _render_preview_pane: Block {i} (ID: {block['id']}, kind: {block['kind']}) HTML conversion took {html_conv_duration:.4f}s"
+                )
+
             preview_wrapper_html = (
                 f"<div id='{preview_div_id}' "
                 f"class='block-preview-wrapper'>{html_content}</div>"
@@ -640,13 +712,26 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
 
     # Initial load of content
     if not st.session_state.get("initial_load_processed", False):
+        print("[PERF_LOG] main: Starting initial load processing.")
+        initial_load_start_time = time.time()
+
         initial_content_to_load = st.session_state.get(
             "initial_markdown_content", st.session_state.default_markdown_content
         )
+
+        print(
+            f"[PERF_LOG] main: Calling parse_full_markdown_to_editor_blocks (content len: {len(initial_content_to_load)})"
+        )
+        parse_call_start_time = time.time()
         try:
             parsed_blocks = parse_full_markdown_to_editor_blocks(
                 initial_content_to_load
             )
+            parse_call_duration = time.time() - parse_call_start_time
+            print(
+                f"[PERF_LOG] main: parse_full_markdown_to_editor_blocks returned in {parse_call_duration:.4f}s"
+            )
+
             if parsed_blocks:
                 st.session_state.documentEditorBlocks = parsed_blocks
             else:
@@ -663,6 +748,7 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
                 "Starting with a default empty block."
             )
             st.session_state.documentEditorBlocks = [create_editor_block(content="")]
+        # The duplicated except block that caused W0705 is now removed.
 
         st.session_state.initial_load_processed = True
         if "initial_markdown_content" in st.session_state:
@@ -670,14 +756,29 @@ def main():  # pylint: disable=too-many-statements,too-many-branches
         if "default_markdown_content" in st.session_state:
             del st.session_state.default_markdown_content
 
+        initial_load_duration = time.time() - initial_load_start_time
+        print(
+            f"[PERF_LOG] main: Initial load processing finished in {initial_load_duration:.4f}s"
+        )
+
     # --- Document Flow Area (Editor and Preview Panes) ---
     editor_pane, preview_pane = st.columns(2)
 
     with editor_pane:
+        render_editor_start_time = time.time()
         _render_editor_pane()
+        render_editor_duration = time.time() - render_editor_start_time
+        print(
+            f"[PERF_LOG] main: _render_editor_pane finished in {render_editor_duration:.4f}s"
+        )
 
     with preview_pane:
+        render_preview_start_time = time.time()
         _render_preview_pane()
+        render_preview_duration = time.time() - render_preview_start_time
+        print(
+            f"[PERF_LOG] main: _render_preview_pane finished in {render_preview_duration:.4f}s"
+        )
 
     # Debug Modal - Rendered based on session state.
     debug_data_str = json.dumps(

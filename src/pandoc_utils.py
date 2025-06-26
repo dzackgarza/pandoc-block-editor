@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 import pypandoc
 
@@ -41,6 +42,12 @@ def parse_markdown_to_ast_json(markdown_string):
     if not markdown_string:
         # Return a valid empty AST
         return {"pandoc-api-version": [1, 23, 1], "meta": {}, "blocks": []}
+
+    start_time = time.time()
+    print(
+        f"[PERF_LOG] pandoc_utils.parse_markdown_to_ast_json: Start Pandoc call (input len: {len(markdown_string)})"
+    )
+
     try:
         ast_json_str = pypandoc.convert_text(
             source=markdown_string,
@@ -48,9 +55,13 @@ def parse_markdown_to_ast_json(markdown_string):
             format="markdown",
             encoding="utf-8",
         )
-        return json.loads(ast_json_str)
+        result = json.loads(ast_json_str)
     except RuntimeError as e:
         print(f"Error in parse_markdown_to_ast_json: {e}")
+        end_time = time.time()
+        print(
+            f"[PERF_LOG] pandoc_utils.parse_markdown_to_ast_json: Pandoc call ERRORED after {end_time - start_time:.4f}s"
+        )
         # Fallback for critical errors. Unused variable 'error_message' removed.
         # Line length of the original f-string for error_message was too long.
         return {
@@ -68,6 +79,10 @@ def parse_markdown_to_ast_json(markdown_string):
         }
     except (IOError, ValueError) as e:  # Catching more specific exceptions
         print(f"Unexpected error (IO/Value) in parse_markdown_to_ast_json: {e}")
+        end_time = time.time()
+        print(
+            f"[PERF_LOG] pandoc_utils.parse_markdown_to_ast_json: Pandoc call FAILED (IO/Value) after {end_time - start_time:.4f}s"
+        )
         # Generic fallback
         return {
             "pandoc-api-version": [1, 23, 1],
@@ -85,6 +100,12 @@ def parse_markdown_to_ast_json(markdown_string):
             ],
         }
 
+    end_time = time.time()
+    print(
+        f"[PERF_LOG] pandoc_utils.parse_markdown_to_ast_json: Pandoc call finished in {end_time - start_time:.4f}s"
+    )
+    return result
+
 
 def convert_ast_json_to_markdown(ast_json, is_full_ast=False):
     """
@@ -92,7 +113,17 @@ def convert_ast_json_to_markdown(ast_json, is_full_ast=False):
     """
     if not ast_json or (is_full_ast and not ast_json.get("blocks")):
         return ""
-    # Unnecessary pass removed (was in an 'if not is_full_ast' block)
+
+    start_time = time.time()
+    # Log a summary of the AST, e.g., number of blocks if full_ast
+    ast_summary = (
+        f"num_blocks: {len(ast_json.get('blocks', []))}"
+        if is_full_ast
+        else "partial AST"
+    )
+    print(
+        f"[PERF_LOG] pandoc_utils.convert_ast_json_to_markdown: Start Pandoc call ({ast_summary})"
+    )
 
     try:
         markdown_output = pypandoc.convert_text(
@@ -105,13 +136,27 @@ def convert_ast_json_to_markdown(ast_json, is_full_ast=False):
                 "--wrap=none",  # Try to preserve line breaks as much as possible
             ],
         )
-        return markdown_output
+        result = markdown_output
     except RuntimeError as e:
         print(f"Error in convert_ast_json_to_markdown: {e}")
+        end_time = time.time()
+        print(
+            f"[PERF_LOG] pandoc_utils.convert_ast_json_to_markdown: Pandoc call ERRORED after {end_time - start_time:.4f}s"
+        )
         return f"Error converting AST to Markdown: {e}"
     except (IOError, ValueError) as e:  # Catching more specific exceptions
         print(f"Unexpected error (IO/Value) in convert_ast_json_to_markdown: {e}")
+        end_time = time.time()
+        print(
+            f"[PERF_LOG] pandoc_utils.convert_ast_json_to_markdown: Pandoc call FAILED (IO/Value) after {end_time - start_time:.4f}s"
+        )
         return f"Unexpected IO/Value error converting AST to Markdown: {e}"
+
+    end_time = time.time()
+    print(
+        f"[PERF_LOG] pandoc_utils.convert_ast_json_to_markdown: Pandoc call finished in {end_time - start_time:.4f}s"
+    )
+    return result
 
 
 def convert_markdown_to_html(markdown_string):
@@ -121,6 +166,12 @@ def convert_markdown_to_html(markdown_string):
     """
     if not markdown_string:
         return ""
+
+    start_time = time.time()
+    print(
+        f"[PERF_LOG] pandoc_utils.convert_markdown_to_html: Start Pandoc call (input len: {len(markdown_string)})"
+    )
+
     try:
         extra_args = [
             "--mathjax",  # Restore MathJax processing
@@ -138,9 +189,13 @@ def convert_markdown_to_html(markdown_string):
             extra_args=extra_args,
             encoding="utf-8",
         )
-        return html_output
+        result = html_output
     except RuntimeError as e:
         print(f"Error in convert_markdown_to_html: {e}")
+        end_time = time.time()
+        print(
+            f"[PERF_LOG] pandoc_utils.convert_markdown_to_html: Pandoc call ERRORED after {end_time - start_time:.4f}s"
+        )
         # Return HTML-formatted error. Broken long f-string for line length.
         error_intro = (
             "<pre style='color: red; background-color: #fdd; "
@@ -153,12 +208,22 @@ def convert_markdown_to_html(markdown_string):
         return error_intro + error_details
     except (IOError, ValueError) as e:  # Catching more specific exceptions
         print(f"Unexpected error (IO/Value) in convert_markdown_to_html: {e}")
+        end_time = time.time()
+        print(
+            f"[PERF_LOG] pandoc_utils.convert_markdown_to_html: Pandoc call FAILED (IO/Value) after {end_time - start_time:.4f}s"
+        )
         # Broken long f-string for line length.
         return (
             "<pre style='color: red; background-color: #fdd; padding: 10px; "
             "border: 1px solid red;'>Unexpected IO/Value error during HTML "
             f"rendering:\n{str(e)}</pre>"
         )
+
+    end_time = time.time()
+    print(
+        f"[PERF_LOG] pandoc_utils.convert_markdown_to_html: Pandoc call finished in {end_time - start_time:.4f}s"
+    )
+    return result
 
 
 if __name__ == "__main__":

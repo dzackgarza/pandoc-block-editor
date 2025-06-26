@@ -7,6 +7,20 @@ and this project adheres to Semantic Versioning.
 
 ## [Unreleased]
 
+## [0.2.4] - 2024-07-29
+
+### Added
+*   **Performance Diagnostics:** Implemented detailed performance logging (`[PERF_LOG]`) throughout `src/app.py` and `src/pandoc_utils.py`. This instrumentation captures timings for:
+    *   Pandoc subprocess calls (AST parsing, AST to Markdown, Markdown to HTML).
+    *   Initial file I/O for the torture test document.
+    *   Overall startup phases and initial document parsing stages.
+    *   Per-block processing during initial parsing.
+    *   UI rendering for editor and preview panes, including per-block HTML conversion for previews.
+    This logging is intended to help pinpoint specific bottlenecks contributing to slow startup and rendering times.
+
+### Fixed
+*   Corrected a syntax error and several Pylint E-level and W-level warnings in `src/app.py` that arose during previous development iterations, including fixing duplicated function definitions and unused variables.
+
 ## [0.2.3] - 2024-07-29
 
 ### Fixed
